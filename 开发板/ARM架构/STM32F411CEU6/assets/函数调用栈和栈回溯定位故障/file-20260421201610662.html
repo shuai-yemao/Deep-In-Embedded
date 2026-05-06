@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>函数调用栈 · 可视化演示</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0f14;
+    --surface: #141720;
+    --surface2: #1c2030;
+    --border: #2a2f42;
+    --border2: #363d56;
+    --text: #e2e6f0;
+    --muted: #7a82a0;
+    --dim: #4a5068;
+
+    --main-color: #4a9eff;
+    --main-bg: #0d2340;
+    --main-border: #1a4880;
+
+    --a-color: #4cdb8a;
+    --a-bg: #0a2818;
+    --a-border: #1a5a38;
+
+    --b-color: #ffb347;
+    --b-bg: #2a1a00;
+    --b-border: #5a3800;
+
+    --sp-color: #ff5f7e;
+    --rbp-color: #c084fc;
+
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Noto Sans SC', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    padding: 28px 40px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+  }
+  header h1 {
+    font-family: var(--mono);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.02em;
+  }
+  header p {
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 300;
+  }
+
+  /* ── Main layout ── */
+  .layout {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 300px 1fr 300px;
+    gap: 0;
+    overflow: hidden;
+  }
+
+  /* ── Panel base ── */
+  .panel {
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .panel:last-child { border-right: none; }
+  .panel-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel-header .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--border2);
+  }
+
+  /* ── Code panel ── */
+  .code-panel { }
+  .code-body {
+    padding: 20px;
+    flex: 1;
+    overflow-y: auto;
+  }
+  .code-section {
+    margin-bottom: 24px;
+  }
+  .fn-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .08em;
+    padding: 3px 8px;
+    border-radius: 3px;
+    margin-bottom: 8px;
+    display: inline-block;
+  }
+  .fn-label.main  { color: var(--main-color); background: var(--main-bg); border: 1px solid var(--main-border); }
+  .fn-label.funcA { color: var(--a-color);    background: var(--a-bg);    border: 1px solid var(--a-border); }
+  .fn-label.funcB { color: var(--b-color);    background: var(--b-bg);    border: 1px solid var(--b-border); }
+
+  .code-lines {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.8;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .code-line {
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    transition: background .25s, border-left .25s;
+    border-left: 3px solid transparent;
+    position: relative;
+  }
+  .code-line .ln {
+    color: var(--dim);
+    min-width: 24px;
+    user-select: none;
+    font-size: 11px;
+  }
+  .code-line .code {
+    color: var(--text);
+    white-space: pre;
+  }
+  .code-line.active {
+    background: rgba(255,180,0,.07);
+    border-left-color: var(--b-color);
+  }
+  .code-line.active .ln { color: var(--b-color); }
+
+  /* syntax */
+  .kw { color: #8b9dff; }
+  .fn { color: var(--a-color); }
+  .fn2 { color: var(--b-color); }
+  .num { color: #f78c6c; }
+  .cm { color: var(--dim); font-style: italic; }
+  .ret { color: var(--sp-color); }
+
+  /* ── Stack panel ── */
+  .stack-panel { }
+  .stack-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 20px 20px 12px;
+    gap: 6px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stack-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--dim);
+    font-size: 12px;
+    font-family: var(--mono);
+    pointer-events: none;
+    transition: opacity .3s;
+  }
+
+  .frame {
+    border-radius: 6px;
+    padding: 10px 14px;
+    border: 1px solid;
+    position: relative;
+    animation: slideUp .35s cubic-bezier(.22,.68,0,1.2);
+    transition: opacity .3s, transform .3s;
+  }
+  @keyframes slideUp {
+    from { transform: translateY(24px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+  .frame.leaving {
+    animation: slideDown .3s ease forwards;
+  }
+  @keyframes slideDown {
+    from { transform: translateY(0);    opacity: 1; }
+    to   { transform: translateY(24px); opacity: 0; }
+  }
+
+  .frame.main  { background: var(--main-bg); border-color: var(--main-border); }
+  .frame.funcA { background: var(--a-bg);    border-color: var(--a-border); }
+  .frame.funcB { background: var(--b-bg);    border-color: var(--b-border); }
+
+  .frame-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .frame.main  .frame-name { color: var(--main-color); }
+  .frame.funcA .frame-name { color: var(--a-color); }
+  .frame.funcB .frame-name { color: var(--b-color); }
+
+  .frame-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .frame-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .frame-row .tag {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(255,255,255,.05);
+    color: var(--dim);
+    min-width: 38px;
+    text-align: center;
+  }
+  .frame-row .val {
+    color: var(--text);
+    opacity: .8;
+  }
+  .frame-row .val.sp-tag { color: var(--sp-color); font-weight: 700; }
+  .frame-row .val.rbp-tag { color: var(--rbp-color); }
+
+  /* SP indicator */
+  .sp-bar {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--sp-color);
+    font-weight: 700;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .3s;
+  }
+  .sp-bar.active { opacity: 1; }
+  .sp-arrow { font-size: 14px; }
+
+  /* addr labels */
+  .addr-labels {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 20px 0;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--dim);
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── Info panel ── */
+  .info-panel { border-right: none; }
+  .info-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .step-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .step-card .step-num {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--dim);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+  .step-card .step-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 8px;
+    line-height: 1.4;
+  }
+  .step-card .step-desc {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.7;
+    font-weight: 300;
+  }
+  .step-card .step-desc code {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--b-color);
+    background: var(--b-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .reg-display {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .reg-title {
+    padding: 10px 14px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    border-bottom: 1px solid var(--border);
+  }
+  .reg-row {
+    display: flex;
+    align-items: center;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    transition: background .2s;
+  }
+  .reg-row:last-child { border-bottom: none; }
+  .reg-row.changed { background: rgba(255,180,0,.06); }
+  .reg-name { color: var(--dim); min-width: 48px; font-size: 11px; }
+  .reg-name.sp { color: var(--sp-color); }
+  .reg-name.rbp { color: var(--rbp-color); }
+  .reg-name.ip { color: #60c8ff; }
+  .reg-val { color: var(--text); font-size: 12px; }
+  .reg-note { color: var(--dim); font-size: 10px; margin-left: auto; }
+
+  /* ── Controls ── */
+  .controls {
+    padding: 16px 40px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface);
+  }
+  .btn {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 8px 20px;
+    border-radius: 5px;
+    border: 1px solid var(--border2);
+    background: var(--surface2);
+    color: var(--text);
+    cursor: pointer;
+    transition: background .15s, border-color .15s, transform .1s;
+    letter-spacing: .04em;
+  }
+  .btn:hover { background: var(--border); border-color: var(--border2); }
+  .btn:active { transform: scale(.97); }
+  .btn:disabled { opacity: .35; cursor: default; transform: none; }
+  .btn.primary {
+    background: #1a3a6a;
+    border-color: var(--main-border);
+    color: var(--main-color);
+  }
+  .btn.primary:hover { background: #1f4580; }
+
+  .progress-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .progress-bar {
+    flex: 1;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--main-color);
+    border-radius: 2px;
+    transition: width .4s ease;
+  }
+  .progress-text {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--dim);
+    min-width: 48px;
+    text-align: right;
+  }
+
+  /* legend */
+  .legend {
+    display: flex;
+    gap: 16px;
+    margin-left: auto;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 2px;
+  }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>call_stack.exe</h1>
+  <p>函数调用栈可视化演示 · main → funcA → funcB</p>
+</header>
+
+<div class="layout">
+
+  <!-- Left: Code -->
+  <div class="panel code-panel">
+    <div class="panel-header"><span class="dot"></span>source.c</div>
+    <div class="code-body">
+      <div class="code-section">
+        <div class="fn-label funcB">funcB</div>
+        <div class="code-lines">
+          <div class="code-line" data-line="1"><span class="ln">1</span><span class="code"><span class="kw">int</span> <span class="fn2">funcB</span>() {</span></div>
+          <div class="code-line" data-line="2"><span class="ln">2</span><span class="code">  <span class="kw">int</span> c = <span class="num">30</span>;</span></div>
+          <div class="code-line" data-line="3"><span class="ln">3</span><span class="code">  <span class="ret">return</span> c;</span></div>
+          <div class="code-line" data-line="4"><span class="ln">4</span><span class="code">}</span></div>
+        </div>
+      </div>
+      <div class="code-section">
+        <div class="fn-label funcA">funcA</div>
+        <div class="code-lines">
+          <div class="code-line" data-line="6"><span class="ln">6</span><span class="code"><span class="kw">int</span> <span class="fn">funcA</span>() {</span></div>
+          <div class="code-line" data-line="7"><span class="ln">7</span><span class="code">  <span class="kw">int</span> b = <span class="num">20</span>;</span></div>
+          <div class="code-line" data-line="8"><span class="ln">8</span><span class="code">  <span class="kw">int</span> r = <span class="fn2">funcB</span>();</span></div>
+          <div class="code-line" data-line="9"><span class="ln">9</span><span class="code">  <span class="ret">return</span> r;</span></div>
+          <div class="code-line" data-line="10"><span class="ln">10</span><span class="code">}</span></div>
+        </div>
+      </div>
+      <div class="code-section">
+        <div class="fn-label main">main</div>
+        <div class="code-lines">
+          <div class="code-line" data-line="12"><span class="ln">12</span><span class="code"><span class="kw">int</span> <span class="fn">main</span>() {</span></div>
+          <div class="code-line" data-line="13"><span class="ln">13</span><span class="code">  <span class="kw">int</span> a = <span class="num">10</span>;</span></div>
+          <div class="code-line" data-line="14"><span class="ln">14</span><span class="code">  <span class="kw">int</span> res = <span class="fn">funcA</span>();</span></div>
+          <div class="code-line" data-line="15"><span class="ln">15</span><span class="code">  <span class="ret">return</span> res;</span></div>
+          <div class="code-line" data-line="16"><span class="ln">16</span><span class="code">}</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Center: Stack -->
+  <div class="panel stack-panel">
+    <div class="panel-header"><span class="dot"></span>stack memory &nbsp;<span style="color:var(--sp-color);font-size:10px;">▲ 向低地址增长</span></div>
+    <div class="stack-body" id="stack-body">
+      <div class="stack-empty" id="stack-empty">等待程序启动…</div>
+    </div>
+    <div class="addr-labels">
+      <span>低地址 (栈顶)</span>
+      <span>高地址 (栈底)</span>
+    </div>
+  </div>
+
+  <!-- Right: Info -->
+  <div class="panel info-panel">
+    <div class="panel-header"><span class="dot"></span>寄存器 &amp; 说明</div>
+    <div class="info-body">
+      <div class="reg-display">
+        <div class="reg-title">寄存器状态</div>
+        <div class="reg-row" id="reg-ip">
+          <span class="reg-name ip">IP</span>
+          <span class="reg-val" id="ip-val">—</span>
+          <span class="reg-note" id="ip-note">指令指针</span>
+        </div>
+        <div class="reg-row" id="reg-sp">
+          <span class="reg-name sp">SP</span>
+          <span class="reg-val" id="sp-val">0xFFFF</span>
+          <span class="reg-note">栈指针（栈顶）</span>
+        </div>
+        <div class="reg-row" id="reg-rbp">
+          <span class="reg-name rbp">RBP</span>
+          <span class="reg-val" id="rbp-val">—</span>
+          <span class="reg-note">当前帧基址</span>
+        </div>
+        <div class="reg-row" id="reg-rax">
+          <span class="reg-name" style="color:#60c8ff">RAX</span>
+          <span class="reg-val" id="rax-val">—</span>
+          <span class="reg-note">返回值寄存器</span>
+        </div>
+      </div>
+
+      <div class="step-card" id="step-card">
+        <div class="step-num" id="step-num">步骤 0 / 8</div>
+        <div class="step-title" id="step-title">点击「下一步」开始演示</div>
+        <div class="step-desc" id="step-desc">程序尚未运行。栈内存为空，寄存器处于初始状态。</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="controls">
+  <button class="btn" id="btn-prev" onclick="goPrev()" disabled>← 上一步</button>
+  <button class="btn primary" id="btn-next" onclick="goNext()">下一步 →</button>
+  <button class="btn" onclick="reset()">重置</button>
+
+  <div class="progress-wrap">
+    <div class="progress-bar"><div class="progress-fill" id="progress" style="width:0%"></div></div>
+    <span class="progress-text" id="prog-text">0 / 8</span>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#1a4880;border:1px solid var(--main-border)"></div>main</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#1a5a38;border:1px solid var(--a-border)"></div>funcA</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#5a3800;border:1px solid var(--b-border)"></div>funcB</div>
+  </div>
+</div>
+
+<script>
+const STEPS = [
+  {
+    line: 12,
+    title: "进入 main()",
+    desc: "操作系统调用 main，CPU 为 main 创建栈帧。IP 跳到 main 函数的起始地址，SP 下移为栈帧留出空间，RBP 设为当前栈帧底部。",
+    frames: [{ cls:"main", name:"main()", rows:[
+      {tag:"ret addr", val:"→ OS exit"},
+      {tag:"saved RBP", val:"0xFFFF (OS)"},
+      {tag:"局部变量", val:"a = ?"},
+    ]}],
+    regs: { ip:"main:12", sp:"0xFF80", rbp:"0xFF80", rax:"—" }
+  },
+  {
+    line: 13,
+    title: "分配局部变量 a = 10",
+    desc: "在 main 的栈帧内为变量 a 分配空间并写入值 10。局部变量就住在栈帧里，函数结束时随栈帧一起消失。",
+    frames: [{ cls:"main", name:"main()", rows:[
+      {tag:"ret addr", val:"→ OS exit"},
+      {tag:"saved RBP", val:"0xFFFF (OS)"},
+      {tag:"a", val:"10", highlight:true},
+    ]}],
+    regs: { ip:"main:13", sp:"0xFF80", rbp:"0xFF80", rax:"—" }
+  },
+  {
+    line: 14,
+    title: "main 调用 funcA → 压栈",
+    desc: "CPU 执行 <code>call</code> 指令，自动做三件事：① 把返回地址（main 第15行）压入栈；② 保存 main 的 RBP；③ SP 继续下移，为 funcA 开辟新的栈帧空间。",
+    frames: [
+      { cls:"main", name:"main()", rows:[
+        {tag:"ret addr", val:"→ OS exit"},
+        {tag:"saved RBP", val:"0xFFFF (OS)"},
+        {tag:"a", val:"10"},
+      ]},
+      { cls:"funcA", name:"funcA()", entering:true, rows:[
+        {tag:"ret addr", val:"→ main:15", highlight:true},
+        {tag:"saved RBP", val:"0xFF80 (main)", highlight:true},
+        {tag:"局部变量", val:"b = ?  r = ?"},
+      ]}
+    ],
+    regs: { ip:"funcA:6", sp:"0xFF40", rbp:"0xFF40", rax:"—" }
+  },
+  {
+    line: 7,
+    title: "funcA: 分配 b = 20",
+    desc: "funcA 在自己的栈帧里分配变量 b。此时栈上同时存在两个帧，main 的帧被压在下面等待，funcA 的帧在顶部活跃。",
+    frames: [
+      { cls:"main", name:"main()", rows:[
+        {tag:"ret addr", val:"→ OS exit"},
+        {tag:"saved RBP", val:"0xFFFF (OS)"},
+        {tag:"a", val:"10"},
+      ]},
+      { cls:"funcA", name:"funcA()", rows:[
+        {tag:"ret addr", val:"→ main:15"},
+        {tag:"saved RBP", val:"0xFF80 (main)"},
+        {tag:"b", val:"20", highlight:true},
+        {tag:"r", val:"?"},
+      ]}
+    ],
+    regs: { ip:"funcA:7", sp:"0xFF40", rbp:"0xFF40", rax:"—" }
+  },
+  {
+    line: 8,
+    title: "funcA 调用 funcB → 再次压栈",
+    desc: "funcA 调用 funcB，<code>call</code> 指令再次触发：保存返回地址（funcA 第9行），保存 funcA 的 RBP，SP 继续下移。三层栈帧同时存在。",
+    frames: [
+      { cls:"main", name:"main()", rows:[
+        {tag:"ret addr", val:"→ OS exit"},
+        {tag:"saved RBP", val:"0xFFFF (OS)"},
+        {tag:"a", val:"10"},
+      ]},
+      { cls:"funcA", name:"funcA()", rows:[
+        {tag:"ret addr", val:"→ main:15"},
+        {tag:"saved RBP", val:"0xFF80 (main)"},
+        {tag:"b", val:"20"},
+        {tag:"r", val:"?"},
+      ]},
+      { cls:"funcB", name:"funcB()", entering:true, rows:[
+        {tag:"ret addr", val:"→ funcA:9", highlight:true},
+        {tag:"saved RBP", val:"0xFF40 (funcA)", highlight:true},
+        {tag:"局部变量", val:"c = ?"},
+      ]}
+    ],
+    regs: { ip:"funcB:1", sp:"0xFF00", rbp:"0xFF00", rax:"—" }
+  },
+  {
+    line: 2,
+    title: "funcB: 分配 c = 30（栈最深处）",
+    desc: "三个栈帧全部就位：main / funcA / funcB 依次叠加。每帧相互隔离，有自己的局部变量、保存的寄存器和返回地址。这是本次调用链的最深点。",
+    frames: [
+      { cls:"main", name:"main()", rows:[
+        {tag:"ret addr", val:"→ OS exit"},
+        {tag:"saved RBP", val:"0xFFFF (OS)"},
+        {tag:"a", val:"10"},
+      ]},
+      { cls:"funcA", name:"funcA()", rows:[
+        {tag:"ret addr", val:"→ main:15"},
+        {tag:"saved RBP", val:"0xFF80 (main)"},
+        {tag:"b", val:"20"},
+        {tag:"r", val:"?"},
+      ]},
+      { cls:"funcB", name:"funcB()", rows:[
+        {tag:"ret addr", val:"→ funcA:9"},
+        {tag:"saved RBP", val:"0xFF40 (funcA)"},
+        {tag:"c", val:"30", highlight:true},
+      ]}
+    ],
+    regs: { ip:"funcB:2", sp:"0xFF00", rbp:"0xFF00", rax:"—" }
+  },
+  {
+    line: 3,
+    title: "funcB return → 弹栈",
+    desc: "<code>ret</code> 指令：① 返回值 30 写入 RAX；② SP 上移，销毁 funcB 的栈帧；③ CPU 从栈中取出返回地址，跳回 funcA 第9行。funcB 的内存并未清零，只是 SP 移走了。",
+    frames: [
+      { cls:"main", name:"main()", rows:[
+        {tag:"ret addr", val:"→ OS exit"},
+        {tag:"saved RBP", val:"0xFFFF (OS)"},
+        {tag:"a", val:"10"},
+      ]},
+      { cls:"funcA", name:"funcA()", rows:[
+        {tag:"ret addr", val:"→ main:15"},
+        {tag:"saved RBP", val:"0xFF80 (main)"},
+        {tag:"b", val:"20"},
+        {tag:"r", val:"30 ← RAX", highlight:true},
+      ]}
+    ],
+    popping: "funcB",
+    regs: { ip:"funcA:9", sp:"0xFF40", rbp:"0xFF40", rax:"30", raxHL:true }
+  },
+  {
+    line: 9,
+    title: "funcA return → 弹栈",
+    desc: "<code>ret</code> 再次执行：返回值（r=30）已在 RAX 中，funcA 的栈帧被销毁，SP 上移，跳回 main 第15行。main 从 RAX 读出结果写入 res。",
+    frames: [
+      { cls:"main", name:"main()", rows:[
+        {tag:"ret addr", val:"→ OS exit"},
+        {tag:"saved RBP", val:"0xFFFF (OS)"},
+        {tag:"a", val:"10"},
+        {tag:"res", val:"30 ← RAX", highlight:true},
+      ]}
+    ],
+    popping: "funcA",
+    regs: { ip:"main:15", sp:"0xFF80", rbp:"0xFF80", rax:"30", raxHL:true }
+  },
+  {
+    line: 15,
+    title: "main return → 程序结束",
+    desc: "main 执行最后的 <code>ret</code>，其栈帧也被销毁。调用栈完全清空，程序将控制权交还给操作系统。整个调用链圆满结束。",
+    frames: [],
+    popping: "main",
+    regs: { ip:"OS exit", sp:"0xFFFF", rbp:"—", rax:"30" }
+  }
+];
+
+let cur = -1;
+
+function renderFrames(step, prev) {
+  const body = document.getElementById('stack-body');
+  const empty = document.getElementById('stack-empty');
+
+  // Remove all existing frames
+  const existing = body.querySelectorAll('.frame');
+  existing.forEach(f => f.remove());
+
+  if (step.frames.length === 0) {
+    empty.style.opacity = '1';
+  } else {
+    empty.style.opacity = '0';
+    // Render frames bottom to top (main at bottom = first in DOM since flexbox column + justify-end)
+    step.frames.forEach((f, i) => {
+      const div = document.createElement('div');
+      div.className = 'frame ' + f.cls + (f.entering ? '' : '');
+      div.style.order = step.frames.length - 1 - i; // bottom frame gets highest order in column-reverse-ish
+
+      let rowsHtml = f.rows.map(r =>
+        `<div class="frame-row">
+          <span class="tag">${r.tag}</span>
+          <span class="val${r.highlight ? ' sp-tag' : ''}">${r.val}</span>
+        </div>`
+      ).join('');
+
+      div.innerHTML = `<div class="frame-name">${f.name}</div><div class="frame-rows">${rowsHtml}</div>`;
+      if (f.entering) div.style.animation = 'slideUp .4s cubic-bezier(.22,.68,0,1.2)';
+      body.appendChild(div);
+    });
+  }
+}
+
+function highlightLine(n) {
+  document.querySelectorAll('.code-line').forEach(el => {
+    el.classList.toggle('active', +el.dataset.line === n);
+  });
+}
+
+function updateRegs(regs) {
+  document.getElementById('ip-val').textContent  = regs.ip;
+  document.getElementById('sp-val').textContent  = regs.sp;
+  document.getElementById('rbp-val').textContent = regs.rbp;
+  document.getElementById('rax-val').textContent = regs.rax;
+  document.getElementById('reg-rax').classList.toggle('changed', !!regs.raxHL);
+  document.getElementById('reg-sp').classList.toggle('changed', true);
+}
+
+function apply(i) {
+  const step = STEPS[i];
+  renderFrames(step, i > 0 ? STEPS[i-1] : null);
+  highlightLine(step.line);
+  updateRegs(step.regs);
+
+  document.getElementById('step-num').textContent = `步骤 ${i+1} / ${STEPS.length}`;
+  document.getElementById('step-title').textContent = step.title;
+  document.getElementById('step-desc').innerHTML = step.desc;
+
+  const pct = ((i+1) / STEPS.length * 100).toFixed(0);
+  document.getElementById('progress').style.width = pct + '%';
+  document.getElementById('prog-text').textContent = `${i+1} / ${STEPS.length}`;
+
+  document.getElementById('btn-prev').disabled = (i === 0);
+  document.getElementById('btn-next').disabled = (i === STEPS.length - 1);
+}
+
+function goNext() {
+  if (cur >= STEPS.length - 1) return;
+  cur++;
+  apply(cur);
+}
+
+function goPrev() {
+  if (cur <= 0) return;
+  cur--;
+  apply(cur);
+}
+
+function reset() {
+  cur = -1;
+  document.querySelectorAll('.frame').forEach(f => f.remove());
+  document.getElementById('stack-empty').style.opacity = '1';
+  document.querySelectorAll('.code-line').forEach(el => el.classList.remove('active'));
+  document.getElementById('ip-val').textContent  = '—';
+  document.getElementById('sp-val').textContent  = '0xFFFF';
+  document.getElementById('rbp-val').textContent = '—';
+  document.getElementById('rax-val').textContent = '—';
+  document.getElementById('reg-rax').classList.remove('changed');
+  document.getElementById('step-num').textContent  = `步骤 0 / ${STEPS.length}`;
+  document.getElementById('step-title').textContent = '点击「下一步」开始演示';
+  document.getElementById('step-desc').innerHTML   = '程序尚未运行。栈内存为空，寄存器处于初始状态。';
+  document.getElementById('progress').style.width  = '0%';
+  document.getElementById('prog-text').textContent = `0 / ${STEPS.length}`;
+  document.getElementById('btn-prev').disabled = true;
+  document.getElementById('btn-next').disabled = false;
+}
+
+// keyboard
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); goNext(); }
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); goPrev(); }
+  if (e.key === 'r' || e.key === 'R') reset();
+});
+</script>
+</body>
+</html>
