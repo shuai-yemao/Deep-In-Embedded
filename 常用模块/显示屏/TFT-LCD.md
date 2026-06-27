@@ -1,17 +1,17 @@
 ### 原子 2.4寸显示模块 ATK-MD0240。
 这款显示模块的 LCD分辨率为 320 * 240，支持 16 位真彩色显示。模块采用 ST7789V 作为 LCD的驱动芯片，该芯片自带 RAM，无需外加驱动器或存储器。使用外接的主控芯片时，仅需使用 [[领域/嵌入式/通信协议/有线通信协议/SPI|SPI]] 接口就可以轻松地驱动这个显示模块。
 #### 原理图
-![[Pasted image 20251007160248.png]]
-![[Pasted image 20251007160333.png]]
+![[assets/TFT-LCD/Pasted image 20251007160248.png]]
+![[assets/TFT-LCD/Pasted image 20251007160333.png]]
 #### 显存和初始化
 LCD 的显存可直接存放在 ST7789V 的片上 RAM 中，ST7789V 的片上 RAM 有 240*320*3 字节，并且 ST7789V 会在没有外部时钟的情况下，自动将其片上 RAM 的数据显示至 LCD 上，以最小化功耗。
 （在每次初始化显示模块之前，必须先通过 RST 引脚对显示模块进行硬件复位，硬件复位要求 RST 至少被拉低 10 微秒，拉高 RST 结束硬件复位后，须延时 120 毫秒等待复位完成后，才能够往显示模块传输数据)
 #### 数据传输
-![[Pasted image 20251007160550.png]]
+![[assets/TFT-LCD/Pasted image 20251007160550.png]]
 ST7789V 支持连续读写 RAM 中存放的 LCD 上颜色对应的数据，并且连续读写的方向（LCD 的扫描方向）是可以通过命令 0x36 进行配置的，如下图所示。
-![[Pasted image 20251007161011.png]]
+![[assets/TFT-LCD/Pasted image 20251007161011.png]]
 配置 LCD 的扫描方向，仅需关心 MY、MX 和 MV 这三个参数，如下表所示。
-![[Pasted image 20251007161036.png]]
+![[assets/TFT-LCD/Pasted image 20251007161036.png]]
 通过命令 0x2A 和命令 0x2B 可以分别设置 ATK-MD0
 130 和 ATK-MD0240 模块显示颜色数据的列地址和行地址，命令 0x2A 的描述，如下图所示。
-![[Pasted image 20251007161111.png]]
+![[assets/TFT-LCD/Pasted image 20251007161111.png]]

@@ -44,11 +44,11 @@ ITM 是一个翻译
 
 Swv 的整体示意图
 
-![[Pasted image 20260304200012.png]]
+![[assets/SWV工作原理/file-20260421201605480.png]]
 
 打开 swo 引脚输出
 
-![[Pasted image 20260304194629.png]]
+![[assets/SWV工作原理/file-20260421201605483.png]]
 
 ### 🎥 视频
 

@@ -22,9 +22,9 @@ esp_err_t i2c_param_config(i2c_port_t i2c_num, const i2c_config_t *i2c_conf);
 
 	参数表
 
-		![[Pasted image 20250928210805.png]]
+		![[assets/IIC/Pasted image 20250928210805.png]]
 
-		![[Pasted image 20250928210900.png]]
+		![[assets/IIC/Pasted image 20250928210900.png]]
 
 esp_err_t i2c_driver_install(i2c_port_t i2c_num,i2c_mode_t mode,size_t slv_rx_buf_len, size_t slv_tx_buf_len,int intr_alloc_flags);
 
@@ -32,8 +32,8 @@ esp_err_t i2c_driver_install(i2c_port_t i2c_num,i2c_mode_t mode,size_t slv_rx_bu
 
 	参数表
 
-		![[Pasted image 20250928211027.png]]
+		![[assets/IIC/Pasted image 20250928211027.png]]
 
 IIC 读写操作
 
-	![[Pasted image 20250928211159.png]]
+	![[assets/IIC/Pasted image 20250928211159.png]]

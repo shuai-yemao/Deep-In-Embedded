@@ -13,7 +13,7 @@
 
 ### 知识点关联思维导图
 
-![[Pasted image 20260322155903.png]]
+![[assets/Jlink下载原理及其应用/file-20260421201601728.png]]
 
 ---
 
@@ -27,12 +27,12 @@
 
 #### 辅助图示
 
-1. 调试器与主机的连接 ![[Pasted image 20260322131300.png]]
-2. CoreSight 系统设计 ![[Pasted image 20260322131845.png]]
-3. Cortex 的调试系统 ![[Pasted image 20260322131932.png]]
-4. 跟踪系统（非侵入式调试）![[Pasted image 20260322132610.png]]
-5. AHB-AP 内部寄存器功能 ![[Pasted image 20260322134630.png]]
-6. ROM 表 ![[Pasted image 20260322135137.png]]
+1. 调试器与主机的连接 ![[assets/Jlink下载原理及其应用/file-20260421201601731.png]]
+2. CoreSight 系统设计 ![[assets/Jlink下载原理及其应用/file-20260421201601734.png]]
+3. Cortex 的调试系统 ![[assets/Jlink下载原理及其应用/file-20260421201601737.png]]
+4. 跟踪系统（非侵入式调试）![[assets/Jlink下载原理及其应用/file-20260421201601845.png]]
+5. AHB-AP 内部寄存器功能 ![[assets/Jlink下载原理及其应用/file-20260421201601876.png]]
+6. ROM 表 ![[assets/Jlink下载原理及其应用/file-20260421201601879.png]]
 
 #### 通俗人话解释
 
@@ -76,13 +76,13 @@
 
 #### 辅助图示
 
-1. Keil 下载界面设置 ![[Pasted image 20260322142925.png]]
-2. 处理器系统框图 ![[Pasted image 20260322144446.png]]
-3. 复位信号 ![[Pasted image 20260322144630.png]]
-4. BOOT 模式 ![[Pasted image 20260322145358.png]]
-5. Flash 内部布局结构 ![[Pasted image 20260322145744.png]]
-6. 处理器的内存映射 ![[Pasted image 20260322150245.png]]
-7. Startup 汇编文件 ![[Pasted image 20260322155318.png]]
+1. Keil 下载界面设置 ![[assets/Jlink下载原理及其应用/file-20260421201601882.png]]
+2. 处理器系统框图 ![[assets/Jlink下载原理及其应用/file-20260421201601886.png]]
+3. 复位信号 ![[assets/Jlink下载原理及其应用/file-20260421201601889.png]]
+4. BOOT 模式 ![[assets/Jlink下载原理及其应用/file-20260421201601892.png]]
+5. Flash 内部布局结构 ![[assets/Jlink下载原理及其应用/file-20260421201601895.png]]
+6. 处理器的内存映射 ![[assets/Jlink下载原理及其应用/file-20260421201601898.png]]
+7. Startup 汇编文件 ![[assets/Jlink下载原理及其应用/file-20260421201601901.png]]
 
 #### 通俗人话解释
 

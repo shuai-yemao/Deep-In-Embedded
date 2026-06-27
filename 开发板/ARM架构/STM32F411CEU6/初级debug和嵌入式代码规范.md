@@ -13,7 +13,7 @@
 
 ### 知识点关联思维导图
 
-![[file-20260421201612428.png]]
+![[assets/初级debug和嵌入式代码规范/file-20260421201612428.png]]
 
 ---
 
@@ -23,13 +23,13 @@
 
 #### 辅助图示
 
-1. 调试器与 CPU 内部连接框图 ![[file-20260421201611430.png]]
-2. 编译器生成代码过程 ![[file-20260421201611427.png]]![[file-20260421201612425.png]]
-3. Arm 内核框图 ![[file-20260421201611424.png]]
-4. 数据观察点窗口 ![[file-20260421201612415.png]]
-5. 系统寄存器窗口 ![[file-20260421201612358.png]]
-6. 输出反汇编文件 ![[file-20260421201612419.png]]
-7. Listing 窗口设置 map 文件位置 ![[file-20260421201612421.png]]
+1. 调试器与 CPU 内部连接框图 ![[assets/初级debug和嵌入式代码规范/file-20260421201611430.png]]
+2. 编译器生成代码过程 ![[assets/初级debug和嵌入式代码规范/file-20260421201611427.png]]![[assets/初级debug和嵌入式代码规范/file-20260421201612425.png]]
+3. Arm 内核框图 ![[assets/初级debug和嵌入式代码规范/file-20260421201611424.png]]
+4. 数据观察点窗口 ![[assets/初级debug和嵌入式代码规范/file-20260421201612415.png]]
+5. 系统寄存器窗口 ![[assets/初级debug和嵌入式代码规范/file-20260421201612358.png]]
+6. 输出反汇编文件 ![[assets/初级debug和嵌入式代码规范/file-20260421201612419.png]]
+7. Listing 窗口设置 map 文件位置 ![[assets/初级debug和嵌入式代码规范/file-20260421201612421.png]]
 
 #### 核心逻辑/原理
 
@@ -94,6 +94,10 @@
 [‍⁠​﻿​​‍​​​‌‌‌​‌‬﻿​﻿‍​​​​‍⁠﻿​​​​​​​​﻿﻿​​‬‍​​‍​​​​​​12 C编译过程（compiler） - 飞书云文档](https://twd6onxsxva.feishu.cn/docx/PH7bdmU62oXmfZxxgl0cPgWmn9b)
 
 [计算机那些事(5)——链接、静态链接、动态链接 | 楚权的世界](https://chuquan.me/2018/06/03/linking-static-linking-dynamic-linking/#%E9%93%BE%E6%8E%A5%E6%A6%82%E8%BF%B0)
+
+[keil的debug界面了解与使用](https://blog.csdn.net/MANONGDKY/article/details/149498857)
+
+[keil的串口调试工具的使用](https://jishuzhan.net/article/2044653105317478401)
 
 ### 💻 代码/PDF
 

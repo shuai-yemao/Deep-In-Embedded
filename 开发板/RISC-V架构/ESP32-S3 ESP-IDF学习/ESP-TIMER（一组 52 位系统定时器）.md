@@ -17,13 +17,12 @@
 esp_err_t esp_timer_create(const esp_timer_create_args_t* create_args,esp_timer_handle_t* out_handle);
 	该函数用于创建 ESPTIMER 实例
 	参数表
-		![[Pasted image 20250910195907.png]]
+		![[assets/ESP-TIMER（一组 52 位系统定时器）/file-20260421201554704.png]]
 	 esp_timer_create_args_t 结构体的成员变量描述
-		 ![[Pasted image 20250910195927.png]]
+		 ![[assets/ESP-TIMER（一组 52 位系统定时器）/file-20260421201554709.png]]
 
 esp_err_t IRAM_ATTR esp_timer_start_periodic(esp_timer_handle_t timer,uint64_t period_us);
 	该函数用于使能定时器的指定中断
 	参数表
-		![[Pasted image 20250910200110.png]]
+		![[assets/ESP-TIMER（一组 52 位系统定时器）/file-20260421201554712.png]]
 		
-

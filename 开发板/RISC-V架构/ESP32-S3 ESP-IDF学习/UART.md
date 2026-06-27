@@ -4,7 +4,7 @@
 
 按数据通信方式分类，可分为串行通信和并行通信两种
 
-![[Pasted image 20250910181400.png]]
+![[assets/UART/file-20260421201558079.png]]
 
 串行通信的基本特征是数据逐位顺序依次传输，优点
 
@@ -20,7 +20,7 @@
 
 根据数据传输方向，通信又可分为全双工、半双工和单工通信
 
-![[Pasted image 20250910181943.png]]
+![[assets/UART/file-20260421201558082.png]]
 
 - 单工是指数据传输仅能沿一个方向，不能实现反方向传输，如校园广播。
 - 半双工是指数据传输可以沿着两个方向，但是需要分时进行，如对讲机。
@@ -32,7 +32,7 @@
 
 根据数据同步方式，通信又可分为同步通信和异步通信
 
-![[Pasted image 20250910182423.png]]
+![[assets/UART/file-20260421201558086.png]]
 
 同步通信要求通信双方**共用同一时钟信号**，在总线上保持统一的时序和周期完成信息传输。
 
@@ -67,7 +67,7 @@
 
 方需要约定一致的数据包格式才能正常收发数据的有关规范。
 
-![[Pasted image 20250910183052.png]]
+![[assets/UART/file-20260421201558088.png]]
 
 校验位
 
@@ -91,13 +91,13 @@ esp_err_t uart_param_config(uart_port_t uart_num,const uart_config_t *uart_confi
 
 	参数表
 
-		![[Pasted image 20250910192107.png]]
+		![[assets/UART/Pasted image 20250910192107.png]]
 
 		返回值：ESP_OK 表示设置成功，ESP_FAIL 表示设置失败。
 
 	该函数使用 uart_config_t 类型的结构体变量传入 uart 外设的配置参数，该结构体的定义如下所示：
 
-		![[Pasted image 20250910192240.png]]
+		![[assets/UART/Pasted image 20250910192240.png]]
 
 		完成上述结构体参数配置之后，可以将结构传递给 uart_param_config () 函数，用以实例化串口并返回串口句柄
 
@@ -107,7 +107,7 @@ esp_err_t uart_set_pin(uart_port_t uart_num,int tx_io_num,int rx_io_num, int rts
 
 	参数表
 
-		![[Pasted image 20250910192548.png]]
+		![[assets/UART/Pasted image 20250910192548.png]]
 
 esp_err_t uart_driver_install(uart_port_t uart_num,int rx_buffer_size,
 
@@ -123,7 +123,7 @@ int intr_alloc_flags)
 
 	参数表
 
-		![[Pasted image 20250910192812.png]]
+		![[assets/UART/Pasted image 20250910192812.png]]
 
 esp_err_t uart_get_buffered_data_len(uart_port_t uart_num, size_t* size);
 
@@ -131,7 +131,7 @@ esp_err_t uart_get_buffered_data_len(uart_port_t uart_num, size_t* size);
 
 	参数表
 
-		![[Pasted image 20250910192913.png]]
+		![[assets/UART/Pasted image 20250910192913.png]]
 
 		返回值：ESP_OK 表示设置成功，ESP_FAIL 表示设置失败
 
@@ -147,7 +147,7 @@ TickType_t ticks_to_wait)
 
 	参数表
 
-		![[Pasted image 20250910193041.png]]
+		![[assets/UART/Pasted image 20250910193041.png]]
 
 int uart_write_bytes(uart_port_t uart_num, const void *src, size_t size)
 
@@ -155,7 +155,7 @@ int uart_write_bytes(uart_port_t uart_num, const void *src, size_t size)
 
 	参数表
 
-		![[Pasted image 20250910193226.png]]
+		![[assets/UART/Pasted image 20250910193226.png]]
 
 	在使用 uart_write_bytes()函数发送数据时，重要的是要理解该函数的执行机制：
 

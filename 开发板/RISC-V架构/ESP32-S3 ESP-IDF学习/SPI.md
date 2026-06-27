@@ -10,9 +10,9 @@ esp_err_t spi_bus_initialize(spi_host_device_t host_id,const spi_bus_config_t *b
 
 	参数表
 
-		![[Pasted image 20251007161315.png]]
+		![[assets/SPI/file-20260421201557964.png]]
 
-		![[Pasted image 20251007161326.png]]
+		![[assets/SPI/Pasted image 20251007161326.png]]
 
 esp_err_t spi_bus_add_device(spi_host_device_t host_id,const spi_device_interface_config_t *dev_config,spi_device_handle_t *handle);
 
@@ -20,9 +20,9 @@ esp_err_t spi_bus_add_device(spi_host_device_t host_id,const spi_device_interfac
 
 	参数表
 
-		![[Pasted image 20251007161514.png]]
+		![[assets/SPI/Pasted image 20251007161514.png]]
 
-		![[Pasted image 20251007161532.png]]
+		![[assets/SPI/Pasted image 20251007161532.png]]
 
 数据传输
 

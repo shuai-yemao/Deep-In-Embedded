@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STM32F411CEU6 — 外设诊断交互报告</title>
+
+<!-- ============ CDN 依赖 ============ -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+
+<style>
+:root {
+  --bg: #ffffff; --bg2: #f8f9fa; --bg3: #e9ecef;
+  --text: #212529; --text2: #495057; --text3: #868e96;
+  --border: #dee2e6; --accent: #228be6; --accent2: #1c7ed6;
+  --green: #2f9e44; --yellow: #f08c00; --red: #e03131;
+  --font: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
+  --radius: 8px; --shadow: 0 1px 3px rgba(0,0,0,.12);
+}
+[data-theme="dark"] {
+  --bg: #1a1b1e; --bg2: #25262b; --bg3: #2c2e33;
+  --text: #c1c2c5; --text2: #909296; --text3: #5c5f66;
+  --border: #373a40; --accent: #4dabf7; --accent2: #339af0;
+  --shadow: 0 1px 3px rgba(0,0,0,.4);
+  --green: #51cf66; --yellow: #fcc419; --red: #ff6b6b;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font); background: var(--bg); color: var(--text);
+  line-height: 1.7; display: flex; min-height: 100vh;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* 侧边栏 */
+nav {
+  width: 240px; flex-shrink: 0; background: var(--bg2);
+  border-right: 1px solid var(--border); padding: 20px 0;
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+}
+nav .nav-title { font-size: 14px; font-weight: 700; color: var(--text2);
+  padding: 0 20px 12px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+nav a { display: block; padding: 6px 20px; font-size: 14px;
+  color: var(--text2); transition: all .15s; border-left: 3px solid transparent; }
+nav a:hover { color: var(--accent); background: var(--bg3); text-decoration: none; }
+nav a.active { color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
+nav .nav-section { font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text3); padding: 12px 20px 4px; }
+
+/* 主内容 */
+main { flex: 1; max-width: 960px; margin: 0 auto; padding: 32px 40px; }
+
+/* 头部 */
+.header { margin-bottom: 32px; padding-bottom: 24px; border-bottom: 2px solid var(--accent); }
+.header h1 { font-size: 28px; font-weight: 800; color: var(--accent); margin-bottom: 4px; }
+.header .meta { color: var(--text3); font-size: 14px; }
+.header .meta span { margin-right: 20px; }
+
+/* 信息卡 */
+.info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px; margin-bottom: 24px; }
+.info-card { background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; }
+.info-card .label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text3); margin-bottom: 2px; }
+.info-card .value { font-size: 16px; font-weight: 600; color: var(--text); }
+.info-card .value.ok { color: var(--green); }
+.info-card .value.warn { color: var(--yellow); }
+.info-card .value.err { color: var(--red); }
+
+h2 { font-size: 22px; font-weight: 700; margin: 36px 0 16px;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+h3 { font-size: 17px; font-weight: 600; margin: 24px 0 12px; color: var(--accent); }
+
+/* Mermaid 容器 */
+.mermaid-box { background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px; margin-bottom: 20px;
+  overflow-x: auto; text-align: center; }
+
+/* 图表 */
+.chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+@media (max-width: 700px) { .chart-row { grid-template-columns: 1fr; } }
+.chart-box { background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; }
+.chart-box h4 { font-size: 13px; font-weight: 600; color: var(--text2);
+  margin-bottom: 8px; text-align: center; }
+.chart-box canvas { max-height: 260px; }
+
+/* 表格 */
+table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px; }
+th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+th { background: var(--bg2); font-weight: 600; color: var(--text2); position: sticky; top: 0; }
+tr:hover { background: var(--bg2); }
+.status { font-weight: 600; font-size: 13px; }
+.status.ok { color: var(--green); } .status.warn { color: var(--yellow); }
+.status.err { color: var(--red); }
+
+/* 代码块 */
+.code-block { position: relative; background: var(--bg2);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  margin-bottom: 20px; font-size: 13px; }
+.code-block .code-header { display: flex; justify-content: space-between;
+  align-items: center; padding: 6px 12px; background: var(--bg3);
+  border-bottom: 1px solid var(--border); border-radius: var(--radius) var(--radius) 0 0;
+  font-size: 12px; color: var(--text3); font-family: var(--mono); }
+.code-block pre { margin: 0; padding: 12px 16px; overflow-x: auto;
+  font-family: var(--mono); line-height: 1.5; tab-size: 4; }
+.code-block .copy-btn { position: absolute; top: 6px; right: 8px;
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 4px;
+  padding: 2px 8px; font-size: 11px; cursor: pointer; color: var(--text2); transition: all .15s; }
+.code-block .copy-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* 公式 */
+.formula-box { background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px 20px; margin-bottom: 16px;
+  overflow-x: auto; text-align: center; font-size: 18px; }
+
+/* 日志查看器 */
+.log-controls { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.log-controls input, .log-controls select {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+  padding: 6px 10px; font-size: 13px; color: var(--text); font-family: var(--mono); }
+.log-controls input { flex: 1; min-width: 160px; }
+.log-viewer { background: #0d1117; border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 16px;
+  font-family: var(--mono); font-size: 12px; line-height: 1.6;
+  max-height: 400px; overflow-y: auto; margin-bottom: 20px; white-space: pre-wrap; word-break: break-all; }
+.log-line { display: block; }
+.log-line .ts { color: #8b949e; }
+.log-line .lvl-info { color: #58a6ff; }
+.log-line .lvl-warn { color: #d29922; }
+.log-line .lvl-err { color: #f85149; }
+.log-line .lvl-debug { color: #6e7681; }
+.log-line.hidden { display: none; }
+
+/* 折叠 */
+details { background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); margin-bottom: 12px; overflow: hidden; }
+details summary { padding: 12px 16px; cursor: pointer; font-weight: 600;
+  font-size: 14px; color: var(--text2); transition: background .15s; }
+details summary:hover { background: var(--bg3); }
+details > div { padding: 12px 16px; border-top: 1px solid var(--border); }
+
+/* 徽章 */
+.badge { display: inline-block; padding: 1px 8px; border-radius: 10px;
+  font-size: 11px; font-weight: 600; }
+.badge.ok { background: #d3f9d8; color: #2b8a3e; }
+.badge.warn { background: #fff3bf; color: #e67700; }
+.badge.err { background: #ffe3e3; color: #c92a2a; }
+[data-theme="dark"] .badge.ok { background: #1e3a1e; color: #51cf66; }
+[data-theme="dark"] .badge.warn { background: #3a2e1e; color: #fcc419; }
+[data-theme="dark"] .badge.err { background: #3a1e1e; color: #ff6b6b; }
+
+/* 顶栏 */
+.topbar { display: flex; justify-content: flex-end; align-items: center;
+  gap: 12px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.topbar .search-input { flex: 1; max-width: 300px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 6px 10px; font-size: 13px; color: var(--text); }
+.theme-toggle { background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 4px; padding: 4px 12px; cursor: pointer; font-size: 13px;
+  color: var(--text2); transition: all .15s; }
+.theme-toggle:hover { background: var(--bg3); }
+
+/* 进度条 */
+.progress-track { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
+.progress-bar { flex: 1; height: 10px; background: var(--bg3); border-radius: 5px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 5px; transition: width .6s ease; }
+.progress-fill.ok { background: var(--green); }
+.progress-fill.warn { background: var(--yellow); }
+.progress-fill.err { background: var(--red); }
+
+@media print { nav { display: none; } body { display: block; } main { max-width: 100%; padding: 20px; } }
+</style>
+</head>
+<body>
+
+<!-- ==================== 侧边栏 ==================== -->
+<nav>
+  <div class="nav-title">F411 外设诊断</div>
+  <div class="nav-section">概览</div>
+  <a href="#info" class="active">项目信息</a>
+  <a href="#status">外设状态</a>
+  <a href="#diagrams">架构图</a>
+  <div class="nav-section">数据分析</div>
+  <a href="#charts">交互图表</a>
+  <a href="#formulas">公式</a>
+  <a href="#tables">数据表</a>
+  <div class="nav-section">调试</div>
+  <a href="#logs">运行日志</a>
+  <a href="#details">诊断详情</a>
+</nav>
+
+<!-- ==================== 主内容 ==================== -->
+<main>
+
+<!-- 顶栏 -->
+<div class="topbar">
+  <input type="text" class="search-input" id="searchInput" placeholder="全文搜索...">
+  <button class="theme-toggle" id="themeToggle">暗色模式</button>
+</div>
+
+<!-- 项目头部 -->
+<div class="header" id="info">
+  <h1>STM32F411CEU6 — 外设诊断报告</h1>
+  <div class="meta">
+    <span>日期：2026-05-25</span>
+    <span>目标板：STM32F411CEU6 Black Pill</span>
+    <span>调试器：J-Link V9 (S/N 69701612)</span>
+    <span>串口：USART1 @ 115200-8N1 (COM3)</span>
+  </div>
+</div>
+
+<!-- 项目信息卡 -->
+<div class="info-grid">
+  <div class="info-card">
+    <div class="label">固件版本</div>
+    <div class="value">UART_V1.0</div>
+  </div>
+  <div class="info-card">
+    <div class="label">编译状态</div>
+    <div class="value ok">0 Errors, 0 Warnings</div>
+  </div>
+  <div class="info-card">
+    <div class="label">Flash 占用</div>
+    <div class="value">24.6 KB / 512 KB (4.8%)</div>
+  </div>
+  <div class="info-card">
+    <div class="label">RAM 占用</div>
+    <div class="value">8.2 KB / 128 KB (6.4%)</div>
+  </div>
+</div>
+
+<!-- 外设状态 -->
+<h2 id="status">外设状态总览</h2>
+
+<table>
+  <thead>
+    <tr><th>外设</th><th>配置</th><th>状态</th><th>备注</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>USART1</td><td>115200-8N1, TX=PA9, RX=PA10</td><td><span class="status ok">[OK]</span></td><td>回环测试通过，波特率误差 +0.14%</td></tr>
+    <tr><td>SPI1</td><td>4.5MHz, Mode 0, SCK=PA5, MOSI=PA7, MISO=PA6</td><td><span class="status warn">[!]</span></td><td>W25Q64 JEDEC=0xEF4017 OK，>256B 写入偶发 BSY</td></tr>
+    <tr><td>I2C1</td><td>400kHz, SCL=PB6, SDA=PB7</td><td><span class="status err">[X]</span></td><td>SR2 BUSY=1 清除不掉，需恢复流程</td></tr>
+    <tr><td>ADC1</td><td>12bit, VREFINT 通道</td><td><span class="status warn">[!]</span></td><td>VREFINT=1.26V (标准 1.21V)，VREF+ 受数字噪声干扰</td></tr>
+    <tr><td>TIM1</td><td>PWM CH1, 1kHz, 50% duty, PA8</td><td><span class="status ok">[OK]</span></td><td>输出波形正常，死区 100ns</td></tr>
+  </tbody>
+</table>
+
+<!-- Mermaid 架构图 -->
+<h2 id="diagrams">系统架构图</h2>
+
+<div class="mermaid-box">
+<pre class="mermaid">
+graph TD
+    CPU["STM32F411<br>Cortex-M4 @ 100MHz"] --> UART["USART1<br>115200 日志输出"]
+    CPU --> SPI["SPI1<br>4.5MHz W25Q64 Flash"]
+    CPU --> I2C["I2C1<br>400kHz 传感器总线"]
+    CPU --> ADC["ADC1<br>12bit 模拟采集"]
+    CPU --> TIM["TIM1<br>PWM 输出"]
+    UART --> PC["上位机"]
+    SPI --> W25["W25Q64<br>8MB Nor Flash"]
+    I2C --> BME["BME280<br>温湿度气压"]
+    I2C --> MPU["MPU6050<br>六轴陀螺仪"]
+    ADC --> SENS["模拟传感器<br>光敏/电位计"]
+    TIM --> MOTOR["舵机/电机"]
+</pre>
+</div>
+
+<!-- 交互图表 -->
+<h2 id="charts">交互图表</h2>
+
+<div class="chart-row">
+  <div class="chart-box">
+    <h4>Flash 512KB 资源分布</h4>
+    <canvas id="chartFlash"></canvas>
+  </div>
+  <div class="chart-box">
+    <h4>ADC 连续采样波形（悬停查看数值）</h4>
+    <canvas id="chartAdc"></canvas>
+  </div>
+</div>
+
+<div class="chart-row">
+  <div class="chart-box" style="grid-column: 1 / -1;">
+    <h4>各外设配置状态量化对比</h4>
+    <canvas id="chartStatus" style="max-height: 200px;"></canvas>
+  </div>
+</div>
+
+<!-- 公式 -->
+<h2 id="formulas">公式与计算</h2>
+
+<!-- 自动渲染：KaTeX 会扫描全文，使用 $$...$$ 或 $...$ -->
+<div class="formula-box">
+  $$f_{TIM} = \frac{f_{CK}}{(PSC + 1)(ARR + 1)} = \frac{100\text{MHz}}{(100-1)(1000-1)} \approx 1\text{kHz}$$
+</div>
+
+<div class="formula-box">
+  $$V_{DDA} = \frac{V_{REFINT\_STD}}{ADC_{VREFINT}} \times 4096 = \frac{1.21\text{V}}{1123} \times 4096 \approx 4.41\text{V}$$
+</div>
+
+<div class="formula-box">
+  $$V_{in} = \frac{ADC_{val}}{4096} \times V_{DDA} = \frac{2048}{4096} \times 4.41\text{V} \approx 2.205\text{V}$$
+</div>
+
+<div class="formula-box">
+  $$Error_{baud} = \left|\frac{115200 - 115360}{115200}\right| \times 100\% = 0.14\% \quad (\text{容限} \pm 2\%)$$
+</div>
+
+<!-- 数据表 -->
+<h2 id="tables">引脚映射表</h2>
+
+<table>
+  <thead>
+    <tr><th>引脚</th><th>功能</th><th>外设</th><th>配置</th><th>复用号</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>PA9</td><td>USART1_TX</td><td>USART1</td><td>AF_PP, 50MHz</td><td>AF7</td></tr>
+    <tr><td>PA10</td><td>USART1_RX</td><td>USART1</td><td>Input floating</td><td>AF7</td></tr>
+    <tr><td>PA5</td><td>SPI1_SCK</td><td>SPI1</td><td>AF_PP, 50MHz</td><td>AF5</td></tr>
+    <tr><td>PA6</td><td>SPI1_MISO</td><td>SPI1</td><td>AF_PP, 50MHz</td><td>AF5</td></tr>
+    <tr><td>PA7</td><td>SPI1_MOSI</td><td>SPI1</td><td>AF_PP, 50MHz</td><td>AF5</td></tr>
+    <tr><td>PB6</td><td>I2C1_SCL</td><td>I2C1</td><td>AF_OD, 50MHz</td><td>AF4</td></tr>
+    <tr><td>PB7</td><td>I2C1_SDA</td><td>I2C1</td><td>AF_OD, 50MHz</td><td>AF4</td></tr>
+    <tr><td>PA8</td><td>TIM1_CH1</td><td>TIM1</td><td>AF_PP, 50MHz</td><td>AF1</td></tr>
+  </tbody>
+</table>
+
+<!-- 日志查看器 -->
+<h2 id="logs">运行日志</h2>
+
+<div class="log-controls">
+  <input type="text" id="logFilter" placeholder="过滤日志...">
+  <select id="logLevel">
+    <option value="all">全部</option>
+    <option value="info">INFO</option>
+    <option value="warn">WARN</option>
+    <option value="err">ERROR</option>
+    <option value="debug">DEBUG</option>
+  </select>
+  <span id="logCount" style="font-size:13px;color:var(--text3);align-self:center;"></span>
+</div>
+
+<div class="log-viewer" id="logViewer">
+<span class="log-line" data-level="info"><span class="ts">[00:00.000]</span> <span class="lvl-info">[INFO]</span> System init: HSE=25MHz, SYSCLK=100MHz</span>
+<span class="log-line" data-level="info"><span class="ts">[00:00.012]</span> <span class="lvl-info">[INFO]</span> USART1: 115200-8N1, TX=PA9, RX=PA10</span>
+<span class="log-line" data-level="info"><span class="ts">[00:00.025]</span> <span class="lvl-info">[INFO]</span> SPI1: Mode 0, 4.5MHz, W25Q64 probing...</span>
+<span class="log-line" data-level="info"><span class="ts">[00:00.028]</span> <span class="lvl-info">[INFO]</span> W25Q64 JEDEC ID = 0xEF4017 (expected 0xEF4017) OK</span>
+<span class="log-line" data-level="info"><span class="ts">[00:00.041]</span> <span class="lvl-info">[INFO]</span> I2C1: 400kHz, SCL=PB6, SDA=PB7, scanning...</span>
+<span class="log-line" data-level="info"><span class="ts">[00:00.045]</span> <span class="lvl-info">[INFO]</span> I2C found: 0x76 (BME280), 0x68 (MPU6050)</span>
+<span class="log-line" data-level="info"><span class="ts">[00:00.058]</span> <span class="lvl-info">[INFO]</span> ADC1: VREFINT read = 1123, calibrating...</span>
+<span class="log-line" data-level="warn"><span class="ts">[00:00.062]</span> <span class="lvl-warn">[WARN]</span> ADC VREFINT=1.26V deviates from standard 1.21V (+4.1%)</span>
+<span class="log-line" data-level="info"><span class="ts">[00:00.075]</span> <span class="lvl-info">[INFO]</span> TIM1: PWM 1kHz 50% duty on PA8</span>
+<span class="log-line" data-level="info"><span class="ts">[00:00.089]</span> <span class="lvl-info">[INFO]</span> FreeRTOS starting scheduler...</span>
+<span class="log-line" data-level="info"><span class="ts">[00:00.091]</span> <span class="lvl-info">[INFO]</span> Task: SensorTask started</span>
+<span class="log-line" data-level="info"><span class="ts">[00:00.092]</span> <span class="lvl-info">[INFO]</span> Task: UartLogTask started</span>
+<span class="log-line" data-level="debug"><span class="ts">[00:01.000]</span> <span class="lvl-debug">[DEBUG]</span> SensorTask: reading BME280...</span>
+<span class="log-line" data-level="info"><span class="ts">[00:01.003]</span> <span class="lvl-info">[INFO]</span> BME280: T=26.3C, P=1013.25hPa, H=45.2%</span>
+<span class="log-line" data-level="debug"><span class="ts">[00:01.004]</span> <span class="lvl-debug">[DEBUG]</span> SensorTask: reading MPU6050...</span>
+<span class="log-line" data-level="info"><span class="ts">[00:01.006]</span> <span class="lvl-info">[INFO]</span> MPU6050: AX=+0.02g, AY=-0.01g, AZ=+1.00g</span>
+<span class="log-line" data-level="warn"><span class="ts">[00:02.000]</span> <span class="lvl-warn">[WARN]</span> SPI1: write page 0x12 offset 0x100, BSY flag stuck</span>
+<span class="log-line" data-level="err"><span class="ts">[00:02.001]</span> <span class="lvl-err">[ERROR]</span> SPI1 BSY recovery: wait timeout > 10ms</span>
+<span class="log-line" data-level="err"><span class="ts">[00:02.050]</span> <span class="lvl-err">[ERROR]</span> I2C1: write to 0x76 failed, BUSY=1 in SR2</span>
+<span class="log-line" data-level="info"><span class="ts">[00:02.051]</span> <span class="lvl-info">[INFO]</span> I2C1: attempting BUSY recovery (9 pulse + SWRST)</span>
+<span class="log-line" data-level="info"><span class="ts">[00:02.060]</span> <span class="lvl-info">[INFO]</span> I2C1: recovery successful, BUSY=0</span>
+</div>
+
+<!-- 诊断详情 -->
+<h2 id="details">诊断详情</h2>
+
+<details>
+  <summary>I2C1 BUSY 锁死 — 根因分析与恢复</summary>
+  <div>
+    <p><strong>根因：</strong>从设备 BME280 在传输中被复位，主设备未收到 STOP 信号，SR2 BUSY 位持续置 1。</p>
+    <p><strong>方案：</strong>GPIO 模拟 9 个时钟脉冲释放从设备，然后硬复位 I2C 外设。</p>
+    <table>
+      <tr><th>步骤</th><th>操作</th><th>状态</th></tr>
+      <tr><td>1</td><td>检查 SCL/SDA 电平，确认总线空闲</td><td><span class="badge ok">完成</span></td></tr>
+      <tr><td>2</td><td>GPIO 模拟 9 个时钟脉冲</td><td><span class="badge ok">完成</span></td></tr>
+      <tr><td>3</td><td>读 I2C1->SR2 & I2C_SR2_BUSY 确认状态</td><td><span class="badge ok">完成</span></td></tr>
+      <tr><td>4</td><td>__HAL_RCC_I2C1_FORCE_RESET() + 延退 10μs</td><td><span class="badge ok">完成</span></td></tr>
+      <tr><td>5</td><td>__HAL_RCC_I2C1_RELEASE_RESET()</td><td><span class="badge ok">完成</span></td></tr>
+      <tr><td>6</td><td>重新初始化 I2C 时序参数</td><td><span class="badge ok">完成</span></td></tr>
+      <tr><td>7</td><td>扫描总线验证：0x76 (BME280) 返回 ACK</td><td><span class="badge ok">完成</span></td></tr>
+    </table>
+  </div>
+</details>
+
+<details>
+  <summary>SPI1 BSY 标志卡死 — 临时恢复代码</summary>
+  <div>
+    <p><strong>根因：</strong>连续写入 >256B 未分页，SPI BSY 标志在跨页边界假死。</p>
+    <p><strong>代码：</strong></p>
+    <div class="code-block">
+      <div class="code-header">spi_busy_recovery.c</div>
+      <pre>// SPI BSY 恢复：软件清除 + 时钟重同步
+void SPI_BSY_Recovery(SPI_TypeDef *SPIx) {
+    // 1. 尝试读 SR 清除残留 BSY
+    uint32_t sr = SPIx->SR;
+    (void)SPIx->DR;  // 读 DR 清空 RXNE
+
+    // 2. 如果 BSY 仍置位，CR1 SPE 复位再使能
+    SPIx->CR1 &= ~SPI_CR1_SPE;
+    volatile uint32_t delay = 10;
+    while (delay--);
+    SPIx->CR1 |= SPI_CR1_SPE;
+
+    // 3. 发送虚拟字节重新同步
+    SPIx->DR = 0xFF;
+    while (SPIx->SR & SPI_SR_BSY);
+    (void)SPIx->DR;
+}</pre>
+    </div>
+  </div>
+</details>
+
+</main>
+
+<!-- JavaScript -->
+<script>
+/* 主题切换 */
+(function() {
+  const stored = localStorage.getItem('theme');
+  if (stored === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+})();
+document.getElementById('themeToggle').addEventListener('click', function() {
+  const html = document.documentElement;
+  const isDark = html.getAttribute('data-theme') === 'dark';
+  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  localStorage.setItem('theme', isDark ? 'light' : 'dark');
+  this.textContent = isDark ? '暗色模式' : '亮色模式';
+});
+
+/* 全文搜索 */
+document.getElementById('searchInput').addEventListener('input', function() {
+  const q = this.value.toLowerCase().trim();
+  document.querySelectorAll('h2, h3, p, td, th, li, .code-block pre').forEach(e => {
+    e.style.background = (!q || e.textContent.toLowerCase().includes(q)) ? '' : '';
+  });
+});
+
+/* 侧边栏 */
+document.querySelectorAll('nav a').forEach(a => {
+  a.addEventListener('click', function() {
+    document.querySelectorAll('nav a').forEach(x => x.classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+window.addEventListener('scroll', () => {
+  let current = '';
+  document.querySelectorAll('h2[id]').forEach(s => { if (window.scrollY >= s.offsetTop - 100) current = s.id; });
+  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + current));
+});
+
+/* 代码复制 */
+document.querySelectorAll('.code-block').forEach(block => {
+  const btn = document.createElement('button');
+  btn.className = 'copy-btn'; btn.textContent = '复制';
+  btn.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(block.querySelector('pre').textContent);
+      btn.textContent = '已复制!'; setTimeout(() => btn.textContent = '复制', 2000);
+    } catch { btn.textContent = '失败'; setTimeout(() => btn.textContent = '复制', 2000); }
+  });
+  block.appendChild(btn);
+});
+
+/* 日志过滤 */
+function filterLogs() {
+  const filter = document.getElementById('logFilter').value.toLowerCase();
+  const level = document.getElementById('logLevel').value;
+  const lines = document.querySelectorAll('.log-line');
+  let count = 0;
+  lines.forEach(line => {
+    const matchF = !filter || line.textContent.toLowerCase().includes(filter);
+    const matchL = level === 'all' || line.dataset.level === level;
+    line.classList.toggle('hidden', !(matchF && matchL));
+    if (matchF && matchL) count++;
+  });
+  document.getElementById('logCount').textContent = `显示 ${count} / ${lines.length} 条`;
+}
+document.getElementById('logFilter').addEventListener('input', filterLogs);
+document.getElementById('logLevel').addEventListener('change', filterLogs);
+filterLogs();
+
+/* Mermaid */
+mermaid.initialize({
+  startOnLoad: true,
+  theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default',
+  securityLevel: 'loose',
+  fontFamily: 'system-ui, -apple-system, sans-serif'
+});
+document.getElementById('themeToggle').addEventListener('click', function() {
+  setTimeout(() => {
+    document.querySelectorAll('.mermaid-box .mermaid').forEach(el => {
+      const src = el.textContent;
+      el.removeAttribute('data-processed');
+      el.textContent = src;
+    });
+    mermaid.run({ nodes: document.querySelectorAll('.mermaid-box .mermaid') });
+  }, 100);
+});
+
+/* KaTeX */
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof renderMathInElement === 'function') {
+    renderMathInElement(document.body, {
+      delimiters: [
+        { left: '$$', right: '$$', display: true },
+        { left: '$', right: '$', display: false }
+      ],
+      throwOnError: false
+    });
+  }
+});
+
+/* Charts */
+document.addEventListener('DOMContentLoaded', function() {
+  /* Chart 1: 资源饼图 */
+  const ctx1 = document.getElementById('chartFlash');
+  if (ctx1) {
+    new Chart(ctx1, {
+      type: 'pie',
+      data: {
+        labels: ['HAL + LL 库', 'FreeRTOS', '应用逻辑', 'BSP 驱动', 'LVGL UI', '剩余'],
+        datasets: [{
+          data: [85, 48, 132, 62, 96, 89],
+          backgroundColor: ['#228be6', '#40c057', '#fab005', '#e03131', '#7950f2', '#868e96'],
+          borderWidth: 2, borderColor: 'var(--bg)'
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: true,
+        plugins: { legend: { position: 'right', labels: { color: 'var(--text)' } } }
+      }
+    });
+  }
+
+  /* Chart 2: ADC 采样波形 */
+  const ctx2 = document.getElementById('chartAdc');
+  if (ctx2) {
+    new Chart(ctx2, {
+      type: 'line',
+      data: {
+        labels: ['t0', 't1', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't9'],
+        datasets: [{
+          label: 'ADC 原始值', data: [1024, 1152, 1380, 1540, 1680, 1792, 1630, 1410, 1220, 1080],
+          borderColor: '#228be6', backgroundColor: 'rgba(34,139,230,0.1)',
+          fill: true, tension: 0.3, pointRadius: 4,
+          pointBackgroundColor: '#228be6'
+        }, {
+          label: '滤波后 (5点移动平均)', data: [null, null, 1265, 1357, 1500, 1630, 1667, 1560, 1390, null],
+          borderColor: '#e03131', backgroundColor: 'rgba(224,49,49,0.05)',
+          fill: true, tension: 0.2, pointRadius: 3,
+          pointBackgroundColor: '#e03131', borderDash: [5, 3]
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { color: 'var(--text)' } },
+          tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}` } }
+        },
+        scales: {
+          x: { ticks: { color: 'var(--text2)' }, grid: { color: 'var(--border)' } },
+          y: { ticks: { color: 'var(--text2)' }, grid: { color: 'var(--border)' }, beginAtZero: true }
+        }
+      }
+    });
+  }
+
+  /* Chart 3: 状态量化对比（横向柱状） */
+  const ctx3 = document.getElementById('chartStatus');
+  if (ctx3) {
+    new Chart(ctx3, {
+      type: 'bar',
+      data: {
+        labels: ['USART1', 'SPI1', 'I2C1', 'ADC1', 'TIM1'],
+        datasets: [{
+          label: '置信度评分', data: [100, 70, 30, 50, 100],
+          backgroundColor: ['#2f9e44', '#f08c00', '#e03131', '#f08c00', '#2f9e44'],
+          borderRadius: 4
+        }]
+      },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => `状态可靠度: ${ctx.parsed.x}%` } }
+        },
+        scales: {
+          x: { min: 0, max: 100, ticks: { color: 'var(--text2)', callback: v => v + '%' },
+               grid: { color: 'var(--border)' } },
+          y: { ticks: { color: 'var(--text)' }, grid: { display: false } }
+        }
+      }
+    });
+  }
+});
+</script>
+</body>
+</html>

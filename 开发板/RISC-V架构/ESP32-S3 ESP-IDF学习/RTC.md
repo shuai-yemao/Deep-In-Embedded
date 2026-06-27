@@ -1,17 +1,27 @@
-### RTC简介
+### RTC 简介
+
 RTC（实时时钟）是指安装在电子设备或实现其功能的 IC（集成电路）上的时钟
+
 通常，RTC 配备一个单独分离的电源，如纽扣电池（备用电池）。
 
-### RTC函数解析
+### RTC 函数解析
+
 struct tm *localtime(const time_t *timer);
+
 	该函数用于获取当前时间
+
 	参数表
+
 		timer 这是指向表示日历时间的 time_t 值的指针
+
 int settimeofday(const struct timeval *tv, const struct timezone *tz);
+
 	该函数用于设置当前时间
+
 	参数表
-		![[Pasted image 20251007162548.png]]
-	
+
+		![[assets/RTC/file-20260421201557809.png]]
+
 $$
 /* 时间结构体, 包括年月日周时分秒等信息 */
 typedef struct
@@ -103,5 +113,4 @@ week = (day + 1 + 2 * month + 3 * (month + 1) /
 100 + year / 400) % 7;
  return week;
 }
-
 $$
