@@ -1128,6 +1128,7 @@ led_handler_status_t __event_process(bsp_led_handler_t *self, led_event_t msg) {
 ##### 3. 打开 DUBUD 日志输出，观察日志信息是否正常
 
 ##### 4 . 测试闪烁功能，是否能按要求正确实现功能
+
 #### 第九步 利用 attribute 和 SCT 实现飞秒启动
 
 ##### 1.利用 attribute 指令将代码放入指定内存段
