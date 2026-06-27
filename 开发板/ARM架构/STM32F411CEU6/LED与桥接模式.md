@@ -86,7 +86,6 @@ mindmap
         接口指针置 NULL
 ```
 
-
 ## 知识点：LED 的桥接模式
 
 ### 实际意义
@@ -107,13 +106,13 @@ mindmap
 > 3. 涂抹沐浴露
 > 4. 冲洗
 > 5. 毛巾擦干
->
+> 
 > **面向对象（C++ 视角）**——重视对象：
 > - `浴霸`：提供加热功能
 > - `洗发水`：提供清洁头发的功能
 > - `沐浴露`：提供清洁身体的功能
 > - `毛巾`：提供擦干功能
->
+> 
 > 每个对象是独立的，可以被复用、替换、组合。洗头可以用洗发水也可以用洗发皂——换一个对象就行，不需要重写整个流程。
 
 #### 桥接模式的定义
@@ -566,38 +565,569 @@ typedef led_handler_status_t (*pf_handler_led_register_t)(
 
 ##### 2.根据 bsp_led_handler_t 结构体来编写 handler 构造函数，第一个传入的参数为 self 指针，其余参数主要为 OS 层操作函数
 
-##### 3.涉及到指针，==进入函数第一步就是检查函数是否为空指针==
+```c
 
-##### 4. 第二步就是==检查是否已初始化==
+led_handler_status_t led_handler_inst(bsp_led_handler_t *const self,
+
+#ifdef OS_SUPPROT
+
+                                      handler_os_delay_t *const os_delay,
+
+                                      handler_os_queue_t *const os_queue,
+
+                                      handler_os_critical_t *const os_critical,
+
+                                      handler_os_thread_t *const os_thread,
+
+#endif
+
+                                      handler_time_base_ms_t *const time_base)
+
+```
+
+##### 3.涉及到指针，==进入函数第一步就是检查函数是否为空指针==（利用宏定义 DEBUG 输出日志信息以及状态码返回值）
+
+```c
+
+/* 参数检查 */
+
+  if ((NULL == self) ||
+
+#ifdef OS_SUPPROT
+
+      (NULL == os_delay) || (NULL == os_queue) || (NULL == os_critical) ||
+
+      (NULL == os_thread) ||
+
+#endif
+
+      (NULL == time_base)) {
+
+#ifdef OS_SUPPROT
+
+    DEBUG_OUT("HANDLER_ERRORPARAMETER\r\n");
+
+#endif
+
+    ret = HANDLER_ERRORPARAMETER;
+
+    return ret;
+
+  }
+
+```
+
+##### 4. 第二步就是==检查是否已初始化==避免程序崩溃 / 未定义错误（野指针问题），利用 DEBUG 输出日志
+
+```c
+
+/* 检查是否已初始化 */
+
+  if (HANDLER_INITED == self->is_inited) {
+
+#ifdef OS_SUPPROT
+
+    DEBUG_OUT("HANDLER_ERRORRESOURCE\r\n");
+
+#endif
+
+    ret = HANDLER_ERRORRESOURCE;
+
+    return ret;
+
+  }
+
+```
 
 ##### 5.为 LED 对象的 OS 操作函数、 tick 函数以及外部接口函数绑定实例函数
 
+```c
+
+/* 绑定硬件接口 */
+
+  self->p_time_base_ms = time_base;
+
+#ifdef OS_SUPPROT
+
+  self->p_os_time_delay = os_delay;
+
+  self->p_os_queue_interface = os_queue;
+
+  self->p_os_critical = os_critical;
+
+  self->p_os_thread = os_thread;
+
+#endif
+
+  /* 设置控制策略函数 */
+
+  self->pf_led_countroler = handler_led_control;
+
+  self->pf_led_register = led_register;
+
+```
+
 ##### 6.创建 LED 实例数组
 
+```c
+
+/* 初始化实例数组 */
+
+  self->instances.led_instance_num = 0;
+
+  ret = __array_init(self->instances.led_instance_group, MAX_INSTANCE_NUMBER);
+
+  if (HANDLER_OK != ret) {
+
+#ifdef DEBUG
+
+    DEBUG_OUT("HANDLER_ERRORNOMEMORY at __array_init\r\n");
+
+#endif
+
+    return ret;
+
+  }
+
+```
+
 ##### 7.创建 LED 对象的线程与队列
+
+```c
+
+#ifdef OS_SUPPROT
+
+  /* 创建 Handler 线程 */
+
+  ret = self->p_os_thread->pf_os_thread_create(handler_thread,
+
+                                               "handler_thread",
+
+                                               256,
+
+                                               self,
+
+                                               0,
+
+                                               &self->thread_handler);
+
+  if (HANDLER_OK != ret) {
+
+#ifdef DEBUG
+
+    DEBUG_OUT("HANDLER_ERRORNOMEMORY at pf_os_thread_create\r\n");
+
+#endif
+
+    return ret;
+
+  }
+
+  /* 创建消息队列 */
+
+  ret = self->p_os_queue_interface->pf_os_queue_create(10,
+
+                                                       sizeof(led_event_t),
+
+                                                       &(self->queue_handler));
+
+  if (HANDLER_OK != ret) {
+
+#ifdef DEBUG
+
+    DEBUG_OUT("HANDLER_ERRORNOMEMORY at pf_os_queue_create\r\n");
+
+#endif
+
+    self->p_os_thread->pf_os_thread_delete(self->thread_handler);
+
+    return ret;
+
+  }
+
+#endif
+
+```
 
 ##### 8.初始化成功标记初始化完成并返回状态值
 
 ##### 9.开始编写 LED 控制函数
 
+```c
+
+led_handler_status_t handler_led_control(bsp_led_handler_t *const self,
+
+                                         uint32_t Cycle_time,
+
+                                         uint32_t blink_times,
+
+                                         proportion_t proportion_on_off,
+
+                                         led_index_t const index) {
+
+#ifdef DEBUG
+
+  DEBUG_OUT("Start_handler_led_control \r\n");
+
+#endif
+
+  led_handler_status_t ret = HANDLER_OK;
+
+#ifdef DEBUG
+
+  DEBUG_OUT("Checing the target statues \r\n");
+
+#endif
+
+  /* 检查 Handler 是否已初始化 (使用 Handler 层的 HANDLER_NOT_INITED 常量) */
+
+  if (HANDLER_NOT_INITED == self->is_inited) {
+
+#ifdef DEBUG
+
+    DEBUG_OUT("HANDLER_ERRORRESOURCE \r\n");
+
+#endif
+
+    ret = HANDLER_ERRORRESOURCE;
+
+    return ret;
+
+  }
+
+#ifdef DEBUG
+
+  DEBUG_OUT("Checing the input parameters \r\n");
+
+#endif
+
+  /* 参数检查 */
+
+  if (!((Cycle_time < 10000) && (blink_times < 1000) &&
+
+        ((PROPORTIONN_1_3 <= proportion_on_off) &&
+
+         (PROPORTIONN_1_1 >= proportion_on_off)) &&
+
+        (index <= MAX_INSTANCE_NUMBER))) {
+
+#ifdef DEBUG
+
+    DEBUG_OUT("HANDLER_ERRORRESOURCE \r\n");
+
+#endif
+
+    ret = HANDLER_ERRORPARAMETER;
+
+    return ret;
+
+  }
+
+#ifdef DEBUG
+
+  DEBUG_OUT("Sending event to LED queue \r\n");
+
+#endif
+
+  /* 构造事件并发送到队列 */
+
+  led_event_t let_event = {
+
+      .Cycle_time = Cycle_time,
+
+      .blink_times = blink_times,
+
+      .proportion_on_off = proportion_on_off,
+
+      .index = index};
+
+  ret = self->p_os_queue_interface->pf_os_queue_put(self->queue_handler,
+
+                                                     &let_event, 0);
+
+  if (HANDLER_OK != ret) {
+
+#ifdef DEBUG
+
+    DEBUG_OUT("HANDLER_ERRORNOMEMORY\r\n");
+
+#endif
+
+    return ret;
+
+  }
+
+#ifdef DEBUG
+
+  DEBUG_OUT("Sending event to LED queue successfully!!\r\n");
+
+#endif
+
+  return ret;
+
+}
+
+```
+
 ##### 10.开始编写 LED 实例注册函数
+
+```c
+
+led_handler_status_t led_register(bsp_led_handler_t *const self,
+
+                                  bsp_led_driver_t *const led_driver,
+
+                                  led_index_t *const index) {
+
+  led_handler_status_t ret = HANDLER_OK;
+
+#ifdef DEBUG
+
+  DEBUG_OUT("Start_led_register\r\n");
+
+#endif
+
+  /* 参数检查 */
+
+  if ((NULL == led_driver) || (NULL == index) ||
+
+      (HANDLER_NOT_INITED == self->is_inited)) {
+
+#ifdef DEBUG
+
+    DEBUG_OUT("HANDLER_ERRORPARAMETER\r\n");
+
+#endif
+
+    ret = HANDLER_ERRORPARAMETER;
+
+    return ret;
+
+  }
+
+  /* 检查 LED 驱动是否已初始化 (使用 Driver 层的 INITED 常量) */
+
+  if (INITED != led_driver->is_inited) {
+
+#ifdef DEBUG
+
+    DEBUG_OUT("HANDLER_ERRORRESOURCE\r\n");
+
+#endif
+
+    ret = HANDLER_ERRORRESOURCE;
+
+    return ret;
+
+  }
+
+  /* 检查实例数量是否已满 */
+
+  if ((MAX_INSTANCE_NUMBER - self->instances.led_instance_num) == 0) {
+
+    ret = HANDLER_ERRORRESOURCE;
+
+    return ret;
+
+  }
+
+#ifdef OS_SUPPROT
+
+  /* 进入临界区，保护共享资源 */
+
+  self->p_os_critical->pf_os_critical_enter();
+
+#endif
+
+  /* 注册 LED 实例 */
+
+  if ((MAX_INSTANCE_NUMBER - self->instances.led_instance_num) > 0) {
+
+    self->instances.led_instance_group[self->instances.led_instance_num] =
+
+        led_driver;
+
+    *index = (led_index_t)self->instances.led_instance_num;
+
+    self->instances.led_instance_num++;
+
+  }
+
+#ifdef OS_SUPPROT
+
+  /* 退出临界区 */
+
+  self->p_os_critical->pf_os_critical_exit();
+
+#endif
+
+  return HANDLER_OK;
+
+}
+
+```
 
 ##### 11.创建 LED 线程函数
 
+```c
+
+led_handler_status_t handler_thread(void *argument) {
+
+  osDelay(1000);
+
+#ifdef DEBUG
+
+  DEBUG_OUT("Start_handler_thread \r\n");
+
+#endif
+
+  led_handler_status_t ret = HANDLER_OK;
+
+  bsp_led_handler_t *p_led_handler;
+
+  led_event_t msg;
+
+  osDelay(10);
+
+  if (NULL != argument) {
+
+    p_led_handler = argument;
+
+  }
+
+  /* 主循环: 接收并处理 LED 事件 */
+
+  for (;;) {
+
+    DEBUG_OUT("Start_handler_thread 2\r\n");
+
+    ret = p_led_handler->p_os_queue_interface->pf_os_queue_get(
+        p_led_handler->queue_handler, &msg, 0);
+
+    if (HANDLER_OK == ret) {
+      DEBUG_OUT("the message received \r\n");
+      __event_process(p_led_handler, msg);
+    }
+
+    osDelay(1000);
+
+  }
+
+}
+
+```
+
 ##### 12.编写 LED 事件处理函数
+
+```c
+
+led_handler_status_t __event_process(bsp_led_handler_t *self, led_event_t msg) {
+
+  led_handler_status_t ret = HANDLER_OK;
+
+  /* 检查索引有效性 */
+
+  if (!((MAX_INSTANCE_NUMBER > msg.index) ||
+
+        (LED_NOT_INITIALIZED == msg.index))) {
+
+#ifdef DEBUG
+
+    DEBUG_OUT("HANDLER_ERRORRESOURCE __event_process index checking\r\n");
+
+#endif
+
+    return HANDLER_ERRORRESOURCE;
+
+  }
+
+  /* 检查是否已初始化 */
+
+  if (LED_NOT_INITIALIZED == msg.index) {
+
+#ifdef DEBUG
+
+    DEBUG_OUT("__event_process LED_NOT_INITIALIZED\r\n");
+
+#endif
+
+    return HANDLER_ERRORRESOURCE;
+
+  }
+
+  /* 检查驱动是否已注册 */
+
+  if (INIT_PATTERN == self->instances.led_instance_group[msg.index]) {
+
+#ifdef DEBUG
+
+    DEBUG_OUT("HANDLER_ERRORRESOURCE at __event_process\r\n");
+
+#endif
+
+    return HANDLER_ERRORRESOURCE;
+
+  }
+
+#ifdef DEBUG
+
+  DEBUG_OUT("Start Processing at __event_process\r\n");
+
+#endif
+
+  /* 设置 LED 参数 */
+
+  (self->instances.led_instance_group[msg.index])->cycle_time_ms =
+
+      msg.Cycle_time;
+
+  (self->instances.led_instance_group[msg.index])->blink_times =
+
+      msg.blink_times;
+
+  (self->instances.led_instance_group[msg.index])->proportion_on_off =
+
+      msg.proportion_on_off;
+
+  /* 执行 LED 闪烁 */
+
+  ret = led_blink_handler(self->instances.led_instance_group[msg.index]);
+
+  if (HANDLER_OK != ret) {
+
+#ifdef DEBUG
+
+    DEBUG_OUT("event processed failed at __event_process\r\n");
+
+#endif
+
+    return HANDLER_ERROR;
+
+  }
+
+#ifdef DEBUG
+
+  DEBUG_OUT("event processed at __event_process\r\n");
+
+#endif
+
+  return ret;
+
+}
+
+```
 
 ##### 13. handle 层的 LED 闪烁函数与 driver 层的代码逻辑一致
 
 #### 第八步 系统集成层中 handle 实例函数与代码单元测试
 
-##### 1. Handler.c 和.h 文件都编写完毕，现在开始编写实例函数与测试函数，实例函数与测试函数分别创建于系统集成层的 system_led 和 system_test 文件中，这样结构清晰
+##### 1.##### 1. Handler.c 和.h 文件都编写完毕，现在开始编写实例函数与测试函数，实例函数与测试函数分别创建于系统集成层的 system_led 和 system_test 文件中，这样结构清晰
 
 ##### 2. OS 层操作函数，外部接口函数，系统 tick 函数，并且==创建实例结构体传入 LED 对象构造函数中绑定 LED 对象==
 
 ##### 3. 打开 DUBUD 日志输出，观察日志信息是否正常
 
 ##### 4 . 测试闪烁功能，是否能按要求正确实现功能
-
 #### 第九步 利用 attribute 和 SCT 实现飞秒启动
 
 ##### 1.利用 attribute 指令将代码放入指定内存段
@@ -635,6 +1165,7 @@ LR_IROM2 0x08007000 0x00001000 {
 ```
 
 ---
+
 ### 关键公式/结论
 
 > 从项目架构中提取的核心设计模式、公式和原则。
