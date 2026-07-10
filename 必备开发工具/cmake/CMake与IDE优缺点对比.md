@@ -64,7 +64,7 @@ CMake + VS Code:
 | 编译器  | ARMCC（Keil 专属）  | 基于 Clang           | GCC（开源通用）             |
 | 并行编译 | 有限              | 有限                 | Ninja 全并行，充分利用多核      |
 | 编译速度 | 基准              | 比 v5 快             | 同配置下通常比 Keil 快 20-50% |
-| 代码体积 | ARMCC 优化最好      | Clang 优秀           | GCC -Os 体积略大(5-15%)   |
+| 代码体积 | ARMCC 优化最好      | Clang 优秀           | GCC -Os 体积略大 (5-15%)   |
 | 免费   | ❌ 需 license     | ❌ 需 license        | ✅ 完全免费                |
 
 > ⚠️ **注意**：ARMCC 的 -O3 优化在某些 benchmark 上比 GCC 小 10-20%，这是 Keil 的护城河。但对大多数项目影响不大。
@@ -137,6 +137,7 @@ CubeMX 生成 CMake 工程  →  VS Code 编辑与编译
 ```
 
 很多项目实际是**混合使用**的：
+
 - 日常改代码用 VS Code + CMake（快速编译）
 - 遇到疑难杂症用 Keil 调试（寄存器窗口更方便）
 
