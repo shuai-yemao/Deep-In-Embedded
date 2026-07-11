@@ -72,8 +72,9 @@ Easylog 是一款超轻量级 (ROM<1.6K, RAM<0.3K)、高性能的 C/C++ 日志�
 2. 移植需要添加的 c 文件 ![[assets/Easylog_RTT日志/file-20260421201558935.png]]
 3. 需要注释的宏定义 ![[assets/Easylog_RTT日志/file-20260421201558940.png]]
 4. 初始化 Easylog ![[assets/Easylog_RTT日志/file-20260421201558954.png]]
-5. 定义接口和输出测试 ![[assets/Easylog_RTT日志/file-20260421201558960.png]]
-6. 带 hal_tick 输出 ![[assets/Easylog_RTT日志/file-20260421201558963.png]]
+5. Elog 常用函数定义 ![[file-20260711152758680.png]]
+6. 定义接口和输出测试 ![[assets/Easylog_RTT日志/file-20260421201558960.png]]
+7. 带 hal_tick 输出 ![[assets/Easylog_RTT日志/file-20260421201558963.png]]
 
 #### 关键公式/结论
 
