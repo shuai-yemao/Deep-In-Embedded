@@ -150,7 +150,7 @@ void UnityOutputChar(int character);
 #define UNITY_OUTPUT_CHAR(ch) UnityOutputChar(ch)
 ~~~
 
-`unity_port.c` 再把字符交给 elog：
+`unity_port.c` 会先按换行缓存 Unity 输出，再将完整的一行交给 `elog_info("UNITY", "%s", line)`：
 
 ~~~c
 #ifdef UNITY_USE_ELOG
@@ -162,14 +162,32 @@ void UnityOutputChar(int character);
 void UnityOutputChar(int character)
 {
 #ifdef UNITY_USE_ELOG
-    elog_raw("%c", (char)character);
+    /* 按行缓存，换行时使用标准 elog_info 格式输出。 */
+    ...
 #else
-    printf("%c", (char)character);
+    putchar(character);
+#endif
+}
+
+void UnityOutputFlush(void)
+{
+#ifdef UNITY_USE_ELOG
+    elog_info("UNITY", "%s", unity_log_buffer);
+#else
+    (void)fflush(stdout);
 #endif
 }
 ~~~
 
-这里不能直接在 Unity 适配层调用 `SEGGER_RTT_Write`，否则会绕过工程统一的日志格式、输出锁和 elog port。
+这样 RTT 中的 Unity 结果会显示为类似下面的标准 elog 行：
+
+~~~text
+I/UNITY          [0.003] ..\\Middlewares\\Third_Party\\Unity\\Test\\unity_port_smoke_test.c:37:test_unity_integer_assertion:PASS
+I/UNITY          [0.003] 3 Tests 0 Failures 0 Ignored
+I/UNITY          [0.003] OK
+~~~
+
+这会使用 INFO 级别和 `UNITY` 标签，并保留 Unity 原始文本。这里仍然不能直接调用 `SEGGER_RTT_Write`，否则会绕过工程统一的日志格式、输出锁和 elog port。
 
 如果工程没有 RTT，则不要定义 `UNITY_USE_ELOG`，并确保已有 `printf` 重定向，例如：
 
@@ -376,16 +394,39 @@ return UNITY_END();
 
 ## 8. 本次实际验证结果
 
-| 项目 | 结果 |
-|---|---|
-| 官方 Unity v2.6.1 源码编译 | 通过 |
-| Unity 冒烟测试 | 通过，UNITY_SMOKE_EXIT=0 |
-| TDD 失败路径 | 故意修改断言后返回 RED_EXIT=1 |
-| TDD 通过路径 | 恢复正确断言后返回 GREEN_EXIT=0 |
-| Keil 完整构建 | 通过，0 Error(s), 0 Warning(s) |
-| Keil XML 工程解析 | 通过 |
-| Unity → elog → RTT 适配编译 | 通过 |
-| STM32 实物 UART/RTT 测试 | 尚未执行 |
+| 项目                      | 结果                              |
+| ----------------------- | ------------------------------- |
+| 官方 Unity v2.6.1 源码编译    | 通过                              |
+| Unity 冒烟测试              | 通过，UNITY_SMOKE_EXIT=0           |
+| TDD 失败路径                | 故意修改断言后返回 RED_EXIT=1            |
+| TDD 通过路径                | 恢复正确断言后返回 GREEN_EXIT=0          |
+| Keil 完整构建               | 通过，0 Error(s), 0 Warning(s)     |
+| Keil XML 工程解析           | 通过                              |
+| Unity → elog → RTT 适配编译 | 通过                              |
+| STM32 实物 RTT 测试         | 通过，3 Tests 0 Failures 0 Ignored |
+
+本次 RTT Viewer 实测输出：
+
+~~~text
+I/elog            [0.000] EasyLogger V2.2.99 is initialize success.
+A/NO_TAG          [0.000 heap:14208 defaultTask] (..\\User\\Debug\\Src\\debug.c:33 test_elog)this assert
+E/NO_TAG          [0.000] (..\\User\\Debug\\Src\\debug.c:34 test_elog)this is error
+W/NO_TAG          [0.000] this is warning
+I/NO_TAG          [0.000] this is info
+D/NO_TAG          (..\\User\\Debug\\Src\\debug.c:37 test_elog)this is debug
+V/NO_TAG          this is verbose
+I/NO_TAG          [0.000] Unity test runner started
+..\\Middlewares\\Third_Party\\Unity\\Test\\unity_port_smoke_test.c:37:test_unity_integer_assertion:PASS
+..\\Middlewares\\Third_Party\\Unity\\Test\\unity_port_smoke_test.c:38:test_unity_string_assertion:PASS
+..\\Middlewares\\Third_Party\\Unity\\Test\\unity_port_smoke_test.c:39:test_unity_pointer_assertions:PASS
+
+-----------------------
+3 Tests 0 Failures 0 Ignored
+OK
+I/NO_TAG          [0.003] Unity test runner finished: PASS
+~~~
+
+其中带有 elog 格式的行来自 `app_elog_init()` 和 `test_elog()`；`I/UNITY` 行来自 Unity 适配层按行缓存后调用 `elog_info("UNITY", "%s", line)`，因此 Unity 测试结果现在也具备标准的 elog 级别、标签和时间格式。
 
 ## 9. 常见问题
 
@@ -443,6 +484,7 @@ git diff --check -- MDK-ARM/STM32F411CEU6_AHT21.uvprojx
 |---|---|---|
 | 当前工程 | 定义 | Unity → elog → SEGGER RTT |
 | 无 RTT 工程 | 不定义 | Unity → printf → UART/USB CDC 等重定向目标 |
+
 ~~~
 
 ## 11. 参考资料
