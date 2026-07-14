@@ -147,9 +147,11 @@ void run_tests(void)
 3. **建立工程目录**：在 `Middlewares/Third_Party/Unity/` 下按 `Inc/`、`Src/`、`Test/` 分层。
 4. **配置编译器**：在 Keil include path 增加 `..\\Middlewares\\Third_Party\\Unity\\Inc`，并定义 `UNITY_INCLUDE_CONFIG_H`。
 5. **配置输出**：在 `unity_config.h` 中将 `UNITY_OUTPUT_CHAR` 映射到 UART/RTT；当前工程暂时使用空输出宏，避免正式固件隐式依赖 semihosting。
-6. **登记源文件**：将 `Src/unity.c` 加入 Keil 的 `Middlewares/Unity` 分组；测试源代码不加入生产 target，单独编译执行。
+6. **登记源文件**：将 `Src/unity.c` 和工程适配文件 `Src/unity_port.c` 加入 Keil 的 `Middlewares/Unity` 分组；测试源代码不加入生产 target，单独编译执行。
 7. **加入测试源**：使用 `Test/unity_port_smoke_test.c` 验证整数、字符串、指针断言，以及 `UNITY_BEGIN()`、`RUN_TEST()`、`UNITY_END()` 运行链路。
 8. **分层验证**：先执行主机 GCC 冒烟测试，再执行 Keil 工程完整构建，最后在目标板上接入 UART/RTT 验证输出。
+
+`unity_port.c` 提供 `setUp()` 和 `tearDown()` 的弱定义，解决正式 target 不包含测试用例时的链接依赖；测试 target 可以提供同名强定义覆盖它们。
 
 ### 8.3 测试源代码
 
@@ -165,13 +167,13 @@ void run_tests(void)
 
 ### 8.4 实际验证记录
 
-| 验证项 | 实际命令/结果 |
-|---|---|
-| TDD Red | 故意将 `42` 改为 `41`，测试进程返回 `RED_EXIT=1` |
-| TDD Green | 恢复为 `42`，测试进程返回 `GREEN_EXIT=0` |
-| 官方 `unity.c` 编译 | `gcc -std=c99 -Wall -Wextra -pedantic`，通过 |
-| Keil 工程构建 | `UV4.exe -b MDK-ARM\\STM32F411CEU6_AHT21.uvprojx -j0`，进程返回 0 |
-| 目标板运行 | 尚未执行，需接入 UART/RTT 输出并烧录验证 |
+| 验证项             | 实际命令/结果                                                                                       |
+| --------------- | --------------------------------------------------------------------------------------------- |
+| TDD Red         | 故意将 `42` 改为 `41`，测试进程返回 `RED_EXIT=1`                                                          |
+| TDD Green       | 恢复为 `42`，测试进程返回 `GREEN_EXIT=0`                                                                |
+| 官方 `unity.c` 编译 | `gcc -std=c99 -Wall -Wextra -pedantic`，通过                                                     |
+| Keil 工程构建       | `UV4.exe -b MDK-ARM\\STM32F411CEU6_AHT21.uvprojx -o build.log`，日志为 `0 Error(s), 0 Warning(s)` |
+| 目标板运行           | 尚未执行，需接入 UART/RTT 输出并烧录验证                                                                     |
 
 当前“正常使用”的结论限定为：官方 Unity v2.6.1 源码已成功编译，冒烟测试通过，Keil 工程也已完成构建；尚不能替代目标板上的硬件运行验证。
 
