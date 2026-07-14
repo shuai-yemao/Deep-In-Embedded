@@ -6,81 +6,107 @@ tags:
   - Unity
   - STM32
   - 单元测试
-  - Mock
-  - 回归测试
 aliases:
   - Unity 使用方法
 ---
 
 # Unity 嵌入式使用手册
 
-> [!summary] 这份手册解决什么问题
-> 说明 Unity 移植完成后，如何在嵌入式 C 工程中编写单元测试、隔离硬件依赖、运行测试并进行日常回归。
+> [!summary] 适合谁阅读
+> 这是一份给第一次接触 Unity C 单元测试的嵌入式开发者的入门手册。你不需要先学会 Mock、CMock 或复杂测试工具，先照着最小示例跑通一个测试即可。
 
-本文只讲“如何使用 Unity”。官方源码获取、目录移植、Keil 配置和输出适配请看：
+本手册讲“移植完成以后怎么用 Unity”。如果你还没有把 Unity 放进工程，请先看：
 
 [[Unity嵌入式移植指南]]
 
-## 1. Unity 在嵌入式项目中的定位
+## 1. Unity 到底是什么
 
-Unity 是一个面向 C 语言的轻量级测试框架，核心由 `unity.c`、`unity.h` 和 `unity_internals.h` 组成，适合加入 MCU 工程或主机测试工程。官方项目明确将嵌入式工具链作为主要使用场景之一。
+这里的 Unity 不是游戏引擎，而是一个用 C 语言写的“小测试工具”。它帮我们回答一个问题：
 
-Unity 负责三件事：
+> 这段代码运行后，结果是不是我预期的结果？
 
-1. 提供 `TEST_ASSERT_*` 断言。
-2. 运行 `RUN_TEST(test_xxx)` 指定的测试函数。
-3. 统计通过、失败、忽略数量，并通过 `UNITY_END()` 返回结果。
+比如我们有一段加法代码：
 
-Unity 不负责：
-
-- 自动模拟 I2C、SPI、UART 或传感器。
-- 自动创建测试任务。
-- 自动替代硬件驱动。
-- 自动决定测试应该在主机还是 STM32 上运行。
-
-因此，嵌入式使用 Unity 的关键不是“把测试文件加入工程”，而是先给业务代码划分可替换的依赖边界。
-
-## 2. 第一个可运行测试
-
-### 2.1 测试文件基本结构
-
-当前工程测试文件：
-
-~~~text
-Middlewares/Third_Party/Unity/Test/unity_port_smoke_test.c
+~~~c
+int add(int a, int b)
+{
+    return a + b;
+}
 ~~~
 
-最小结构如下：
+我们希望 `add(2, 3)` 得到 `5`。用 Unity 写成测试就是：
+
+~~~c
+TEST_ASSERT_EQUAL_INT(5, add(2, 3));
+~~~
+
+这句话可以读成：
+
+> 我期望得到 5，请检查实际得到的结果是不是 5。
+
+得到 5，测试通过；得到其他值，测试失败。
+
+## 2. 先看一次完整测试
+
+把下面代码保存成测试文件，就能理解 Unity 的基本用法：
 
 ~~~c
 #include "unity.h"
 
 void setUp(void)
 {
-    /* 每个测试开始前执行。 */
+    /* 每个测试开始前执行。暂时没有准备工作，可以留空。 */
 }
 
 void tearDown(void)
 {
-    /* 每个测试结束后执行。 */
+    /* 每个测试结束后执行。暂时没有清理工作，可以留空。 */
 }
 
-static void test_integer(void)
+static void test_add_two_numbers(void)
 {
-    TEST_ASSERT_EQUAL_INT(42, 40 + 2);
+    int result = 2 + 3;
+
+    TEST_ASSERT_EQUAL_INT(5, result);
 }
 
 int unity_test_run(void)
 {
     UNITY_BEGIN();
-    RUN_TEST(test_integer);
+    RUN_TEST(test_add_two_numbers);
     return UNITY_END();
 }
 ~~~
 
-当前工程使用 `unity_test_run()`，而不是默认直接定义 `main()`，因为正式工程已经有 `Core/Src/main.c`。这样测试源文件可以参与正式 Target 编译而不会产生 `main multiply defined`。
+这段代码分成四部分：
 
-只有独立测试 Target 才使用：
+| 代码                                             | 白话解释          |
+| ---------------------------------------------- | ------------- |
+| `#include "unity.h"`                           | 使用 Unity 的功能  |
+| `setUp()`                                      | 每个测试开始前做准备    |
+| `test_add_two_numbers()`                       | 真正要检查的一件事     |
+| `UNITY_BEGIN()` / `RUN_TEST()` / `UNITY_END()` | 开始、运行、结束并统计测试 |
+
+### 2.1 为什么使用 `unity_test_run()` 而不是 `main()`
+
+普通的 C 程序通常从 `main()` 开始。但你的 STM32 正式工程已经有一个 `main()`，如果测试文件再写一个 `main()`，链接时就会报：
+
+~~~text
+Symbol main multiply defined
+~~~
+
+所以当前工程使用：
+
+~~~c
+int unity_test_run(void)
+{
+    /* 运行 Unity 测试 */
+}
+~~~
+
+正式工程可以编译这个测试函数；需要真正运行时，在测试任务或测试入口中调用 `unity_test_run()`。
+
+如果是单独的主机测试程序，才额外打开：
 
 ~~~c
 #ifdef UNITY_TEST_MAIN
@@ -91,212 +117,374 @@ int main(void)
 #endif
 ~~~
 
-### 2.2 测试生命周期
+## 3. 什么是“断言”
 
-Unity 每次执行一个测试时，顺序是：
+“断言”可以理解成考试时的答案检查器。
+
+你先写出标准答案，再把程序实际算出的答案交给 Unity：
+
+~~~c
+int actual = add(2, 3);
+TEST_ASSERT_EQUAL_INT(5, actual);
+~~~
+
+这里：
+
+- `5` 是你认为正确的答案，叫“期望值”。
+- `actual` 是程序实际算出的答案，叫“实际值”。
+- 两者相同，测试通过。
+- 两者不同，测试失败。
+
+几乎所有 Unity 断言都可以用这个思路理解：
 
 ~~~text
-setUp()
-    -> test_xxx()
-    -> tearDown()
-    -> 下一个测试
+准备数据 -> 调用函数 -> 得到结果 -> 检查结果
 ~~~
 
-适合放入 `setUp()` 的内容：
+## 4. 最常用的断言
 
-- 清零测试状态结构体。
-- 初始化假的传感器数据。
-- 设置 Mock 函数的默认返回值。
-- 初始化测试计数器。
-
-不适合放入 `setUp()` 的内容：
-
-- 启动真实 FreeRTOS 调度器。
-- 初始化真实 I2C 外设。
-- 依赖上一个测试留下的全局状态。
-- 连接一次后供所有测试共享的隐式硬件状态。
-
-每个测试应该能够单独运行，不能依赖测试执行顺序。
-
-## 3. 常用断言
-
-### 3.1 整数、布尔值和状态码
+### 4.1 检查两个整数是否相等
 
 ~~~c
-TEST_ASSERT_TRUE(condition);
-TEST_ASSERT_FALSE(condition);
-TEST_ASSERT_EQUAL_INT(expected, actual);
-TEST_ASSERT_NOT_EQUAL_INT(expected, actual);
-TEST_ASSERT_EQUAL_UINT(expected, actual);
-TEST_ASSERT_EQUAL_HEX8(expected, actual);
+TEST_ASSERT_EQUAL_INT(期望值, 实际值);
 ~~~
 
-测试驱动返回值时，优先验证“状态码”和“输出数据”两部分：
+例子：
 
 ~~~c
-static void test_driver_returns_success_and_value(void)
+static void test_add(void)
 {
-    int status = sensor_read(&value);
+    int actual = 2 + 3;
 
-    TEST_ASSERT_EQUAL_INT(SENSOR_OK, status);
-    TEST_ASSERT_EQUAL_UINT(2500U, value);
+    TEST_ASSERT_EQUAL_INT(5, actual);
 }
 ~~~
 
-### 3.2 字符串、数组和指针
+如果 `actual` 是 `5`，通过；如果是 `4`，失败。
+
+常用于：
+
+- 函数返回值
+- 错误码
+- 计数值
+- 计算结果
+
+### 4.2 检查两个整数不相等
 
 ~~~c
-TEST_ASSERT_EQUAL_STRING("AHT21", sensor_name());
-TEST_ASSERT_EQUAL_MEMORY(expected, actual, sizeof(expected));
+TEST_ASSERT_NOT_EQUAL_INT(期望不相等的值, 实际值);
+~~~
+
+例子：
+
+~~~c
+int result = sensor_read();
+TEST_ASSERT_NOT_EQUAL_INT(SENSOR_ERROR, result);
+~~~
+
+意思是：这次读取结果不能是 `SENSOR_ERROR`。
+
+### 4.3 检查条件是真的还是假的
+
+~~~c
+TEST_ASSERT_TRUE(条件);
+TEST_ASSERT_FALSE(条件);
+~~~
+
+例子：
+
+~~~c
+TEST_ASSERT_TRUE(sensor_is_ready());
+TEST_ASSERT_FALSE(sensor_is_busy());
+~~~
+
+可以这样理解：
+
+- `TEST_ASSERT_TRUE(x)`：希望 `x` 为真。
+- `TEST_ASSERT_FALSE(x)`：希望 `x` 为假。
+- C 语言中，`0` 是假，非 `0` 是真。
+
+如果你想检查一个具体错误码，建议使用 `TEST_ASSERT_EQUAL_INT()`，因为失败时更容易看出实际返回了什么。
+
+### 4.4 检查字符串内容
+
+~~~c
+TEST_ASSERT_EQUAL_STRING(期望字符串, 实际字符串);
+~~~
+
+例子：
+
+~~~c
+const char *name = "AHT21";
+TEST_ASSERT_EQUAL_STRING("AHT21", name);
+~~~
+
+它比较的是文字内容，不是两个地址是否相同。
+
+不要写成：
+
+~~~c
+TEST_ASSERT_EQUAL_INT((int)"AHT21", (int)name);
+~~~
+
+这比较的是地址，不能正确判断两个字符串是否相同。
+
+如果数据不是以 `\0` 结尾，而是一个固定长度的协议字段，可以使用：
+
+~~~c
+char code[4] = {'A', 'H', 'T', '2'};
+TEST_ASSERT_EQUAL_STRING_LEN("AHT2", code, 4);
+~~~
+
+### 4.5 检查指针是否为空
+
+~~~c
+TEST_ASSERT_NULL(pointer);
+TEST_ASSERT_NOT_NULL(pointer);
+~~~
+
+例子：
+
+~~~c
+void *buffer = create_buffer();
 TEST_ASSERT_NOT_NULL(buffer);
-TEST_ASSERT_NULL(error_pointer);
 ~~~
 
-### 3.3 浮点数
+意思是：创建缓冲区后，返回的地址不能是空地址。
 
-浮点数不能直接依赖完全相等，使用精度范围：
+错误处理时可以反过来写：
 
 ~~~c
-TEST_ASSERT_FLOAT_WITHIN(0.01f, 25.00f, measured_temperature);
+void *buffer = create_buffer_when_memory_is_full();
+TEST_ASSERT_NULL(buffer);
 ~~~
 
-### 3.4 错误路径
+意思是：内存不足时，函数应该返回空地址。
 
-不要只测试正常路径，还要测试：
+注意：指针不为空，只能说明“有一个地址”，不能说明地址指向的数据一定正确。数据内容还要继续检查。
+
+### 4.6 检查一段数据是否相同
 
 ~~~c
-static void test_sensor_timeout_returns_error(void)
-{
-    fake_i2c_set_timeout(true);
-
-    TEST_ASSERT_EQUAL_INT(SENSOR_TIMEOUT, sensor_read(&value));
-}
+TEST_ASSERT_EQUAL_MEMORY(期望地址, 实际地址, 字节数);
 ~~~
 
-建议每个驱动或业务模块至少覆盖：成功、参数错误、超时、重试失败、边界值和恢复路径。
-
-## 4. 测试对象分层
-
-嵌入式项目不应把所有测试都放到 STM32 实物上。推荐按下面的层次分工：
-
-| 层次 | 测试对象 | 依赖 | 推荐运行位置 |
-|---|---|---|---|
-| 纯函数 | CRC、温湿度换算、数据解析 | 无硬件 | 主机 GCC |
-| 业务逻辑 | 阈值、告警、状态转换 | Fake 数据 | 主机 GCC |
-| 驱动接口 | I2C 调用参数、重试次数 | Mock/Stub | 主机 GCC |
-| 系统接口 | FreeRTOS 队列、任务协作 | RTOS 测试桩或目标板 | 专用测试 Target |
-| 硬件验证 | 真实 AHT21 读数、时序 | 真实板卡 | STM32 目标板 |
-
-ThrowTheSwitch 的构建建议也强调：单元测试通常应该在更快、更可控的环境运行；目标板更适合做系统级和硬件验证，而不是承载所有单元测试。
-
-## 5. 如何隔离硬件依赖
-
-### 5.1 推荐的依赖边界
-
-把业务代码依赖的硬件操作收敛到接口中：
+检查协议数据时常用：
 
 ~~~c
-typedef struct
-{
-    int (*write)(uint8_t address, const uint8_t *data, uint16_t length);
-    int (*read)(uint8_t address, uint8_t *data, uint16_t length);
-    void (*delay_ms)(uint32_t ms);
-} sensor_bus_t;
+uint8_t expected[] = {0xAC, 0x33, 0x00};
+uint8_t actual[] = {0xAC, 0x33, 0x00};
 
-int aht21_read(sensor_bus_t *bus, float *temperature, float *humidity);
+TEST_ASSERT_EQUAL_MEMORY(expected, actual, 3);
 ~~~
 
-正式工程传入真实 I2C 实现，测试工程传入 Fake 实现。这样测试 AHT21 解析逻辑时，不需要真的连接 AHT21。
+意思是：从两个地址开始，连续比较 3 个字节。
 
-### 5.2 最小 Fake 示例
+如果想让失败日志更容易看懂，可以使用十六进制数组断言：
 
 ~~~c
-static int fake_read_status;
-static uint8_t fake_read_data[8];
-static unsigned int fake_read_count;
-
-static int fake_i2c_read(uint8_t address, uint8_t *data, uint16_t length)
-{
-    (void)address;
-    fake_read_count++;
-
-    if (fake_read_status != 0) {
-        return fake_read_status;
-    }
-
-    memcpy(data, fake_read_data, length);
-    return 0;
-}
-
-static void test_aht21_retries_after_i2c_failure(void)
-{
-    sensor_bus_t bus = {
-        .read = fake_i2c_read,
-    };
-
-    fake_read_status = -1;
-
-    TEST_ASSERT_EQUAL_INT(AHT21_ERROR, aht21_read(&bus, &temperature, &humidity));
-    TEST_ASSERT_EQUAL_UINT(3U, fake_read_count);
-}
+TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, actual, 3);
 ~~~
 
-这个示例的重点是验证“失败后重试三次”，而不是验证 STM32 HAL 或 I2C 电平。HAL 和真实总线应在目标板测试中验证。
+这里的 `3` 是元素数量，必须与数组实际长度匹配。
 
-### 5.3 Mock 和 Stub 的区别
+### 4.7 检查浮点数
 
-| 类型 | 作用 | 示例 |
-|---|---|---|
-| Stub | 返回预设数据，让被测代码继续执行 | I2C 返回固定温湿度帧 |
-| Fake | 一个可运行的简化实现 | 内存版 Flash、环形队列 |
-| Mock | 记录调用并验证交互 | 验证 I2C 被调用 3 次 |
-
-项目规模较大时，可以在 Unity 基础上引入 CMock 或 Ceedling；它们分别用于生成 Mock 和组织测试构建。当前工程先使用手写 Fake，依赖少、便于在 Keil 和 GCC 两侧复用。
-
-## 6. AHT21 测试建议
-
-### 6.1 不建议直接这样测试
+温度、湿度等计算结果通常不能要求完全相等，因为浮点计算可能产生很小的误差。
 
 ~~~c
-static void test_aht21_real_sensor(void)
-{
-    IICInit(&AHT_bus);
-    TEST_ASSERT_EQUAL_INT(0, AHT21_Read(&AHT_bus));
-}
+TEST_ASSERT_FLOAT_WITHIN(允许误差, 期望值, 实际值);
 ~~~
 
-这个测试依赖真实传感器、电源、连线、时序和当前环境温度，更接近硬件验收测试，不是稳定的单元测试。
+例子：
 
-### 6.2 推荐拆成三类
+~~~c
+float actual_temperature = 25.004f;
 
-1. **数据解析测试**：输入固定的 AHT21 原始 6 字节数据，验证温度和湿度换算。
-2. **通信异常测试**：让 Fake I2C 返回 NACK、超时或 CRC 错误，验证错误码和重试次数。
-3. **目标板验证测试**：在 STM32 上连接真实 AHT21，验证初始化、采样周期和长期运行。
+TEST_ASSERT_FLOAT_WITHIN(0.01f, 25.00f, actual_temperature);
+~~~
 
-### 6.3 测试命名建议
+它实际检查的是：
 
 ~~~text
-test_aht21_parse_valid_frame
-test_aht21_reject_invalid_crc
-test_aht21_retry_after_i2c_timeout
-test_aht21_convert_temperature_boundary
+实际值与期望值的差的绝对值 <= 允许误差
 ~~~
 
-测试名应包含“对象 + 条件 + 预期结果”，这样 RTT 输出或 CI 报告中可以直接定位意图。
+这里误差是 `0.004`，小于 `0.01`，所以通过。
 
-## 7. 当前工程的 elog/RTT 使用方式
+### 4.8 检查大于、小于和范围
 
-当前工程定义 `UNITY_USE_ELOG` 时，输出链路为：
+~~~c
+TEST_ASSERT_GREATER_THAN(下限, 实际值);
+TEST_ASSERT_LESS_THAN(上限, 实际值);
+TEST_ASSERT_INT_WITHIN(允许误差, 期望值, 实际值);
+~~~
+
+例如检查电池电压不能低于 3.0 V：
+
+~~~c
+float voltage = read_battery_voltage();
+TEST_ASSERT_GREATER_THAN_FLOAT(3.0f, voltage);
+~~~
+
+例如检查温度大约是 25 度：
+
+~~~c
+TEST_ASSERT_INT_WITHIN(1, 25, temperature);
+~~~
+
+它允许温度范围为 `24` 到 `26`。
+
+### 4.9 检查某一位是否为 1
+
+嵌入式代码经常把很多开关放在一个寄存器里。例如 bit3 表示传感器准备好了：
+
+~~~c
+uint8_t status = 0x08;
+
+TEST_ASSERT_BIT_HIGH(3, status);
+~~~
+
+意思是：检查 `status` 的第 3 位是不是 1。
+
+检查某一位必须为 0 时：
+
+~~~c
+TEST_ASSERT_BIT_LOW(3, status);
+~~~
+
+## 5. 一条测试应该怎样写
+
+推荐固定使用下面三步：
+
+### 第一步：准备输入
+
+~~~c
+fake_i2c_load_valid_frame();
+~~~
+
+### 第二步：调用被测函数
+
+~~~c
+status = aht21_read(&fake_bus, &temperature, &humidity);
+~~~
+
+### 第三步：检查结果
+
+~~~c
+TEST_ASSERT_EQUAL_INT(AHT21_OK, status);
+TEST_ASSERT_FLOAT_WITHIN(0.1f, 25.0f, temperature);
+TEST_ASSERT_FLOAT_WITHIN(0.1f, 50.0f, humidity);
+~~~
+
+完整示例：
+
+~~~c
+static void test_aht21_read_success(void)
+{
+    float temperature = 0.0f;
+    float humidity = 0.0f;
+    int status;
+
+    fake_i2c_load_valid_frame();
+    status = aht21_read(&fake_bus, &temperature, &humidity);
+
+    TEST_ASSERT_EQUAL_INT(AHT21_OK, status);
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 25.0f, temperature);
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 50.0f, humidity);
+}
+~~~
+
+## 6. `setUp()` 和 `tearDown()` 是做什么的
+
+可以把每个测试想象成一次独立实验：
+
+- `setUp()`：实验前摆好器材。
+- 测试函数：进行实验并检查结果。
+- `tearDown()`：实验后收拾器材。
+
+例如每次测试前都把 Fake I2C 恢复为正常状态：
+
+~~~c
+void setUp(void)
+{
+    fake_i2c_reset();
+}
+
+void tearDown(void)
+{
+    fake_i2c_reset();
+}
+~~~
+
+这样一个测试失败，也不会把错误状态带给下一个测试。
+
+## 7. AHT21 应该怎么测试
+
+不要一开始就让每个测试都连接真实 AHT21。真实传感器会受到接线、电源、时序和环境温度影响，测试容易一会儿通过、一会儿失败。
+
+先把测试分成三种：
+
+### 7.1 不接硬件的测试
+
+给程序一组固定的原始数据，检查温湿度换算是否正确：
+
+~~~c
+static void test_aht21_convert_data(void)
+{
+    float temperature;
+    float humidity;
+
+    aht21_convert_raw(known_raw_data, &temperature, &humidity);
+
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 25.0f, temperature);
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 50.0f, humidity);
+}
+~~~
+
+这类测试可以在电脑上快速运行。
+
+### 7.2 模拟通信失败
+
+“模拟”就是测试时故意让假的 I2C 返回错误：
+
+~~~c
+static void test_aht21_retry_after_timeout(void)
+{
+    fake_i2c_return_timeout();
+
+    TEST_ASSERT_EQUAL_INT(
+        AHT21_TIMEOUT,
+        aht21_read(&fake_bus, &temperature, &humidity));
+}
+~~~
+
+这样可以检查超时、重试和错误处理，而不需要真的拔掉 I2C 线。
+
+### 7.3 连接真实硬件测试
+
+最后再把测试程序烧到 STM32，连接真实 AHT21，检查：
+
+- I2C 是否能正常通信。
+- 传感器初始化是否成功。
+- 连续读取是否稳定。
+- FreeRTOS 任务中是否能正常运行。
+
+这属于硬件测试，不要把它和电脑上的快速单元测试混为一谈。
+
+## 8. RTT、elog 和 printf 输出
+
+当前工程使用的输出路径是：
 
 ~~~text
-Unity 输出字符
-    -> unity_port.c 按行缓存
-    -> elog_info("UNITY", line)
-    -> elog_port_output()
-    -> SEGGER_RTT_Write()
+Unity 测试文字
+    -> Unity 适配层
+    -> elog
+    -> RTT
+    -> RTT Viewer 窗口
 ~~~
 
-测试入口中使用工程现有日志初始化：
+测试入口可以这样写：
 
 ~~~c
 #ifdef UNITY_USE_ELOG
@@ -312,29 +500,30 @@ int unity_test_run(void)
 #endif
 
     UNITY_BEGIN();
-    RUN_TEST(test_aht21_parse_valid_frame);
-    RUN_TEST(test_aht21_reject_invalid_crc);
-
+    RUN_TEST(test_aht21_convert_data);
     return UNITY_END();
 }
 ~~~
 
-RTT 中应看到类似：
+RTT 中会看到类似：
 
 ~~~text
-I/UNITY [0.003] test_aht21_parse_valid_frame:PASS
-I/UNITY [0.003] test_aht21_reject_invalid_crc:PASS
-I/UNITY [0.003] 2 Tests 0 Failures 0 Ignored
+I/UNITY [0.003] test_aht21_convert_data:PASS
+I/UNITY [0.003] 1 Tests 0 Failures 0 Ignored
 I/UNITY [0.003] OK
 ~~~
 
-如果不使用 RTT，取消 `UNITY_USE_ELOG`，并确保工程已经将 `printf` 重定向到 UART、USB CDC 或其他输出通道。
+如果没有 RTT：
 
-## 8. 三种运行方式
+1. 不定义 `UNITY_USE_ELOG`。
+2. 保留 Unity 的 `printf` 输出分支。
+3. 确保工程已经把 `printf` 重定向到 UART 或 USB CDC。
 
-### 8.1 主机 GCC 测试
+## 9. 测试怎样运行
 
-适合纯函数、数据解析、业务逻辑和 Fake 驱动测试：
+### 9.1 在电脑上运行
+
+适合测试加法、数据解析、温湿度换算和假的 I2C：
 
 ~~~powershell
 gcc -std=c99 -Wall -Wextra -pedantic `
@@ -348,83 +537,41 @@ gcc -std=c99 -Wall -Wextra -pedantic `
 .\unity-port-smoke.exe
 ~~~
 
-返回值：
+看到 `OK`，说明测试全部通过。看到 `FAIL`，先看失败测试的文件名和行号。
 
-- `0`：所有测试通过。
-- 非 `0`：至少一个测试失败或被测试框架判定为失败。
+### 9.2 在 Keil 中编译
 
-### 8.2 Keil 正式工程编译
+测试文件可以加入 Keil 工程编译，但不能再定义一个 `main()`。当前工程使用 `unity_test_run()`，因此不会与正式 `main.c` 冲突。
 
-可以把不包含 `main()` 的测试源文件加入正式 Target，验证测试代码本身能够通过 ARMCC 编译和链接。但这不会自动执行测试。
+### 9.3 在 STM32 上运行
 
-当前工程的 `unity_port_smoke_test.c` 默认只提供 `unity_test_run()`，因此不会与正式 `main.c` 冲突。
+需要建立独立测试 Target，或者在专门的测试任务中调用 `unity_test_run()`。不要把正式应用的 `main()` 和测试程序的 `main()` 同时加入一个 Target。
 
-### 8.3 独立 STM32 测试 Target
+## 10. 初学者最容易遇到的问题
 
-适合验证 elog/RTT、FreeRTOS、真实外设和目标板行为：
-
-1. 复制一个独立 Keil Target。
-2. 保留 Unity、测试源和必要的业务源文件。
-3. 移除正式应用 `main.c`，或让测试 Target 使用独立入口。
-4. 定义 `UNITY_USE_ELOG`。
-5. 在测试入口调用 `unity_test_run()`。
-6. 烧录并通过 RTT Viewer 查看结果。
-
-不要把独立测试 Target 的 `main()` 和正式应用 `main()` 同时链接。
-
-## 9. 日常回归测试流程
-
-每次修改驱动或业务逻辑后，建议按以下顺序执行：
-
-~~~text
-修改代码
-  -> 主机 GCC 测试
-  -> 检查失败测试和边界场景
-  -> Keil 完整构建
-  -> 必要时运行 STM32 目标板测试
-  -> 查看 git diff 和测试输出
-~~~
-
-建议把测试分为三组：
-
-- `fast`：主机上秒级完成的纯函数和 Fake 测试。
-- `target`：需要 FreeRTOS、RTT 或 HAL 的目标板测试。
-- `hardware`：需要真实 AHT21、传感器或外部设备的验收测试。
-
-日常开发优先运行 `fast`；提交前运行 `fast + Keil build`；修改硬件驱动或通信时再运行 `target/hardware`。
-
-## 10. 常见问题
-
-| 现象 | 原因 | 处理 |
+| 现象 | 用白话说原因 | 怎么处理 |
 |---|---|---|
-| `main multiply defined` | 测试文件和正式工程都定义了 `main()` | 使用 `unity_test_run()`；只有独立 Target 定义 `UNITY_TEST_MAIN` |
-| `__ARM_use_no_argv multiply defined` | 通常由两个 `main()` 引起 | 先解决重复 `main()` |
-| 测试能编译但没有执行 | 正式工程只编译了测试文件，没有调用测试入口 | 在专用测试任务中调用 `unity_test_run()` |
-| RTT 中没有 Unity 输出 | elog 未初始化或 RTT 未启动 | 检查 `app_elog_init()`、`elog_start()` 和 J-Link RTT Viewer |
-| Unity 输出没有标准 elog 前缀 | 使用了旧的逐字符 `elog_raw()` 适配 | 使用当前按行缓存的 `UnityOutputChar()` |
-| 主机测试依赖 HAL 头文件 | 测试没有隔离硬件边界 | 为 I2C、延时和 GPIO 提供 Fake/Stub |
-| 测试偶尔失败 | 依赖真实时间、任务调度或未清理的全局状态 | 在 `setUp()` 重置状态，固定输入和时序 |
+| `main multiply defined` | 工程里有两个程序入口 | 测试文件改用 `unity_test_run()` |
+| 只看到编译成功，没有测试输出 | 只是把测试文件编译了，没有调用它 | 在测试入口调用 `unity_test_run()` |
+| RTT 没有输出 | elog 或 RTT 还没启动 | 先调用 `app_elog_init()`，再打开 RTT Viewer |
+| 浮点测试失败 | 两个小数存在计算误差 | 使用 `TEST_ASSERT_FLOAT_WITHIN()` |
+| 字符串测试失败 | 实际字符串多了字符或没有 `\0` | 检查字符串长度和结束符 |
+| 测试一会儿通过一会儿失败 | 测试之间互相影响，或依赖真实硬件 | 在 `setUp()` 重置状态，使用固定输入 |
+| 主机上通过，板子上失败 | 主机没有验证真实硬件 | 增加 STM32 目标板测试 |
 
-## 11. 推荐的测试维护规则
+## 11. 记住这五句话
 
-- 一个测试函数只验证一个行为。
-- 测试名写清条件和预期结果。
-- 测试之间不共享可变状态。
-- 不在单元测试中依赖真实传感器读数。
-- 失败路径和边界值与成功路径同等重要。
-- 测试代码也要经过编译器警告检查。
-- 测试输出必须能够定位到测试名称。
-- 修改接口时同步修改 Fake/Mock 和测试用例。
-- 每次修复一个缺陷，至少增加一个回归测试。
+1. Unity 就是帮你检查“实际结果是不是预期结果”的工具。
+2. 一条测试通常是：准备输入、调用函数、检查结果。
+3. `expected` 写期望结果，`actual` 写程序实际结果。
+4. 纯计算和数据解析优先在电脑上测试，真实传感器放到 STM32 上测试。
+5. 正式工程已有 `main()` 时，测试入口使用 `unity_test_run()`。
 
-## 12. 参考资料
+## 12. 继续学习
 
-本文的结构参考了以下资料，并结合当前 STM32 工程实际情况重写：
+- [Unity 官方仓库](https://github.com/ThrowTheSwitch/Unity)
+- [Unity 官方入门指南](https://github.com/ThrowTheSwitch/Unity/blob/v2.6.1/docs/UnityGettingStartedGuide.md)
+- [Unity 官方断言说明](https://github.com/ThrowTheSwitch/Unity/blob/v2.6.1/docs/UnityAssertionsReference.md)
+- [博客园：STM32 使用 Unity 单元测试](https://www.cnblogs.com/hxj568/p/17149939.html)
 
-- [ThrowTheSwitch/Unity 官方仓库](https://github.com/ThrowTheSwitch/Unity)：源码、版本和嵌入式工具链定位。
-- [ThrowTheSwitch：Which Build Method?](https://www.throwtheswitch.org/build/which)：主机、模拟器和目标板测试的取舍，以及硬件依赖隔离思路。
-- [博客园：unity 单元测试](https://www.cnblogs.com/hxj568/p/17149939.html)：STM32 工程导入 Unity、添加源文件和测试入口的基本流程。
-- [GitCode：Unity 单元测试框架：嵌入式 C 开发的轻量级测试解决方案](https://blog.gitcode.com/17936ea64883a0103606a5d6085e05e1.html)：轻量集成、Mock 外设和嵌入式测试价值的介绍。
-- [CMake 下配置 Unity 测试框架](https://smhk.net/note/2024/11/setting-up-unity-test-framework-for-cmake/)：测试目录和独立测试构建的组织思路。
-
-博客用于参考教程组织方式和实践经验；Unity API、源码和版本信息以官方仓库为准。
+如果某个断言、代码或错误日志看不懂，可以把具体测试代码和 RTT/Keil 输出贴出来，按“输入 → 调用 → 结果 → 断言”的顺序一起分析。
