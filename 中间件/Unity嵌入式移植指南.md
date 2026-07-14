@@ -39,11 +39,11 @@ Middlewares/Third_Party/Unity/
 
 官方文件校验标识：
 
-| 文件 | 官方 Git blob SHA |
-|---|---|
-| `src/unity.c` | `7fa2dc6306607f24148c40f9f4751c906d4a2a6f` |
-| `src/unity.h` | `9e2a97b791a56bf073bea5d8835575becdb863f9` |
-| `src/unity_internals.h` | `562f5b6da6d05a736423c58847a26acba1c0ef0c` |
+| 文件                        | 官方 Git blob SHA                                         |
+| ------------------------- | ------------------------------------------------------- |
+| `src/unity.c`             | `7fa2dc6306607f24148c40f9f4751c906d4a2a6f`              |
+| `src/unity.h`             | `9e2a97b791a56bf073bea5d8835575becdb863f9`              |
+| `src/unity_internals.h`   | `562f5b6da6d05a736423c58847a26acba1c0ef0c`              |
 | `examples/unity_config.h` | `efd91232c5d41b97608c41ece2a68f5eb57807b3`（落盘后追加本工程输出宏） |
 
 ## 3. 移植要点
@@ -127,6 +127,53 @@ void run_tests(void)
 | `Middlewares/Third_Party/Unity/Inc/unity_internals.h` | 核心类型和断言声明 |
 | `Middlewares/Third_Party/Unity/Src/unity.c` | 运行器、计数器和核心断言实现 |
 <!-- DIFF-END -->
+
+## 8. 官方源码地址与完整移植流程
+
+### 8.1 官方源码地址
+
+- 官方仓库：<https://github.com/ThrowTheSwitch/Unity>
+- 本次锁定版本：<https://github.com/ThrowTheSwitch/Unity/tree/v2.6.1>
+- 官方 `unity.c`：<https://github.com/ThrowTheSwitch/Unity/blob/v2.6.1/src/unity.c>
+- 官方 `unity.h`：<https://github.com/ThrowTheSwitch/Unity/blob/v2.6.1/src/unity.h>
+- 官方 `unity_internals.h`：<https://github.com/ThrowTheSwitch/Unity/blob/v2.6.1/src/unity_internals.h>
+- 官方配置模板：<https://github.com/ThrowTheSwitch/Unity/blob/v2.6.1/examples/unity_config.h>
+- 官方许可证：<https://github.com/ThrowTheSwitch/Unity/blob/v2.6.1/LICENSE.txt>
+
+### 8.2 从官方源码到工程的移植流程
+
+1. **锁定版本**：使用 `v2.6.1`，记录官方文件 SHA，避免直接跟随 `master` 产生不可追溯变化。
+2. **获取源码**：从官方 `src/` 获取 `unity.c`、`unity.h`、`unity_internals.h`；从 `examples/` 获取 `unity_config.h` 模板，并保留 `LICENSE.txt`。
+3. **建立工程目录**：在 `Middlewares/Third_Party/Unity/` 下按 `Inc/`、`Src/`、`Test/` 分层。
+4. **配置编译器**：在 Keil include path 增加 `..\\Middlewares\\Third_Party\\Unity\\Inc`，并定义 `UNITY_INCLUDE_CONFIG_H`。
+5. **配置输出**：在 `unity_config.h` 中将 `UNITY_OUTPUT_CHAR` 映射到 UART/RTT；当前工程暂时使用空输出宏，避免正式固件隐式依赖 semihosting。
+6. **登记源文件**：将 `Src/unity.c` 加入 Keil 的 `Middlewares/Unity` 分组；测试源代码不加入生产 target，单独编译执行。
+7. **加入测试源**：使用 `Test/unity_port_smoke_test.c` 验证整数、字符串、指针断言，以及 `UNITY_BEGIN()`、`RUN_TEST()`、`UNITY_END()` 运行链路。
+8. **分层验证**：先执行主机 GCC 冒烟测试，再执行 Keil 工程完整构建，最后在目标板上接入 UART/RTT 验证输出。
+
+### 8.3 测试源代码
+
+测试文件：`Middlewares/Third_Party/Unity/Test/unity_port_smoke_test.c`
+
+覆盖内容：
+
+- `TEST_ASSERT_EQUAL_INT`
+- `TEST_ASSERT_EQUAL_STRING`
+- `TEST_ASSERT_NOT_NULL`
+- `TEST_ASSERT_NULL`
+- `UNITY_BEGIN` / `RUN_TEST` / `UNITY_END`
+
+### 8.4 实际验证记录
+
+| 验证项 | 实际命令/结果 |
+|---|---|
+| TDD Red | 故意将 `42` 改为 `41`，测试进程返回 `RED_EXIT=1` |
+| TDD Green | 恢复为 `42`，测试进程返回 `GREEN_EXIT=0` |
+| 官方 `unity.c` 编译 | `gcc -std=c99 -Wall -Wextra -pedantic`，通过 |
+| Keil 工程构建 | `UV4.exe -b MDK-ARM\\STM32F411CEU6_AHT21.uvprojx -j0`，进程返回 0 |
+| 目标板运行 | 尚未执行，需接入 UART/RTT 输出并烧录验证 |
+
+当前“正常使用”的结论限定为：官方 Unity v2.6.1 源码已成功编译，冒烟测试通过，Keil 工程也已完成构建；尚不能替代目标板上的硬件运行验证。
 
 ## 6. 验证结论
 
