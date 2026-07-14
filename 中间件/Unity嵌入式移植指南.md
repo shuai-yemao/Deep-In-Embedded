@@ -248,7 +248,7 @@ static void test_integer(void)
     TEST_ASSERT_EQUAL_INT(42, 40 + 2);
 }
 
-int main(void)
+int unity_test_run(void)
 {
 #ifdef UNITY_USE_ELOG
     app_elog_init();
@@ -266,9 +266,18 @@ int main(void)
         return result;
     }
 }
+
+#ifdef UNITY_TEST_MAIN
+int main(void)
+{
+    return unity_test_run();
+}
+#endif
 ~~~
 
 其中 `app_elog_init()` 和 `test_elog()` 对应工程现有的 `User/Debug/Src/debug.c` 实现。正式测试 target 启用 `UNITY_USE_ELOG` 时，Unity 输出和测试过程日志会共用 elog/RTT；主机 GCC 冒烟测试不定义该宏，因此不会依赖 STM32 的 elog、FreeRTOS 或 RTT。
+
+注意：正式工程已经有 `Core/Src/main.c`，所以测试文件默认只提供 `unity_test_run()`，不能直接再定义 `main()`。独立 Unity 测试 target 才定义 `UNITY_TEST_MAIN`，让该文件生成自己的测试入口。
 
 不希望测试文件定义 main 时，可以改用 unity_main，由独立测试任务或测试 target 调用。
 
@@ -330,7 +339,7 @@ TEST_FAIL_MESSAGE("driver returned an unexpected status");
 ### 7.1 主机 GCC 冒烟测试
 
 ~~~powershell
-gcc -std=c99 -Wall -Wextra -pedantic -DUNITY_INCLUDE_CONFIG_H -IMiddlewares/Third_Party/Unity/Inc Middlewares/Third_Party/Unity/Test/unity_port_smoke_test.c Middlewares/Third_Party/Unity/Src/unity.c Middlewares/Third_Party/Unity/Src/unity_port.c -o unity-port-smoke.exe
+gcc -std=c99 -Wall -Wextra -pedantic -DUNITY_INCLUDE_CONFIG_H -DUNITY_TEST_MAIN -IMiddlewares/Third_Party/Unity/Inc Middlewares/Third_Party/Unity/Test/unity_port_smoke_test.c Middlewares/Third_Party/Unity/Src/unity.c Middlewares/Third_Party/Unity/Src/unity_port.c -o unity-port-smoke.exe
 ./unity-port-smoke.exe
 ~~~
 
