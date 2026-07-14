@@ -21,21 +21,30 @@ aliases:
 
 Unity 官方项目：<https://github.com/ThrowTheSwitch/Unity>
 
-官方仓库最新稳定版（本次检索结果）：v2.6.1。由于本机终端无法访问 GitHub，且本地缓存只有 Unity 头文件没有对应 `unity.c`，本次先落地一个可审计的嵌入式核心兼容层；完整官方发行包替换应作为后续动作，并重新验证所有断言接口。
+本次实际采用官方仓库 `v2.6.1` 标签源码，不再使用自定义 Unity 兼容实现。
 
 ## 2. 目录约定
 
 ```text
 Middlewares/Third_Party/Unity/
 ├── Inc/
-│   ├── unity.h
-│   ├── unity_config.h
-│   └── unity_internals.h
+│   ├── unity.h                 # 官方源码
+│   ├── unity_config.h          # 官方 examples 配置模板 + 本工程输出宏
+│   └── unity_internals.h       # 官方源码
 └── Src/
-    └── unity.c
+    └── unity.c                 # 官方源码
 ```
 
 `unity.c` 只应在测试构建中参与链接。若正式固件不包含测试入口，可从 Keil target 中排除 Unity 源文件，以避免增加固件体积。
+
+官方文件校验标识：
+
+| 文件 | 官方 Git blob SHA |
+|---|---|
+| `src/unity.c` | `7fa2dc6306607f24148c40f9f4751c906d4a2a6f` |
+| `src/unity.h` | `9e2a97b791a56bf073bea5d8835575becdb863f9` |
+| `src/unity_internals.h` | `562f5b6da6d05a736423c58847a26acba1c0ef0c` |
+| `examples/unity_config.h` | `efd91232c5d41b97608c41ece2a68f5eb57807b3`（落盘后追加本工程输出宏） |
 
 ## 3. 移植要点
 
@@ -67,10 +76,11 @@ void run_tests(void)
 
 ### 4.1 初始修改
 
-- [x] 新增 `Middlewares/Third_Party/Unity/Inc/unity.h`
-- [x] 新增 `Middlewares/Third_Party/Unity/Inc/unity_config.h`
-- [x] 新增 `Middlewares/Third_Party/Unity/Inc/unity_internals.h`
-- [x] 新增 `Middlewares/Third_Party/Unity/Src/unity.c`
+- [x] 从官方 `ThrowTheSwitch/Unity@v2.6.1` 获取 `unity.h`
+- [x] 从官方 `ThrowTheSwitch/Unity@v2.6.1` 获取 `unity_internals.h`
+- [x] 从官方 `ThrowTheSwitch/Unity@v2.6.1` 获取 `unity.c`
+- [x] 从官方 `examples/unity_config.h` 获取配置模板并加入本工程输出宏
+- [x] 从官方 `LICENSE.txt` 获取许可证文件
 - [x] 将 Unity 头文件目录加入 Keil include path
 - [x] 将 `unity.c` 加入 Keil 的 `Middlewares/Unity` 分组
 - [ ] 在真实 AHT21 驱动测试中接入 UART/RTT 输出
@@ -120,7 +130,7 @@ void run_tests(void)
 
 ## 6. 验证结论
 
-当前结论：主机侧 `gcc -std=c99 -Wall -Wextra -pedantic` 编译通过，Keil `.uvprojx` XML 解析通过；尚未完成 Keil 实际构建和目标板 UART/RTT 输出验证。由于官方完整源码下载受本机网络代理限制，本次实现不是对 Unity v2.6.1 完整源码的逐文件镜像，使用前应优先替换为锁定版本的官方 `unity.c`、`unity.h` 和 `unity_internals.h`。
+当前结论：官方 Unity v2.6.1 三个核心源码文件和许可证已落盘，主机侧 `gcc -std=c99 -Wall -Wextra -pedantic` 编译通过，Keil `.uvprojx` XML 解析通过；尚未完成 Keil 实际构建和目标板 UART/RTT 输出验证。
 
 ## 7. 后续步骤
 
