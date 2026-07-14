@@ -26,6 +26,7 @@ aliases:
 - 已加入可执行冒烟测试 unity_port_smoke_test.c。
 - GCC 冒烟测试通过。
 - Keil 完整构建通过：0 Error(s), 0 Warning(s)。
+- Unity 输出适配为 Unity → elog → SEGGER RTT，复用工程现有日志链路。
 - 尚未在 STM32 实物上烧录并通过 UART/RTT 观察测试输出。
 
 “框架集成成功”不等于“AHT21 业务代码已经完成单元测试”。
@@ -50,6 +51,21 @@ UNITY_BEGIN()
     -> UNITY_END()
     -> 返回 0 表示通过，非 0 表示失败
 ~~~
+
+目标板上的日志输出链路：
+
+~~~text
+Unity 的单字符输出
+    -> UnityOutputChar()
+    -> elog_raw()
+    -> elog_port_output()
+    -> SEGGER_RTT_Write()
+    -> J-Link RTT Viewer
+~~~
+
+Unity 不直接依赖 RTT；启用 `UNITY_USE_ELOG` 时由工程现有的 elog port 统一管理。
+
+未定义 `UNITY_USE_ELOG` 时，适配层自动退回 `printf`。因此目标工程只要已经把 `printf` 重定向到 UART、USB CDC 或其他控制台，就可以在没有 RTT 的情况下查看 Unity 输出。
 
 ## 2. 官方源码地址
 
@@ -127,25 +143,46 @@ Unity 在嵌入式环境中主要需要：
 1. 编译器定义 UNITY_INCLUDE_CONFIG_H。
 2. 定义 UNITY_OUTPUT_CHAR，决定测试结果输出位置。
 
-当前工程使用：
+当前工程的 `unity_config.h` 使用一个适配函数：
 
 ~~~c
-#define UNITY_OUTPUT_CHAR(ch) ((void)(ch))
+void UnityOutputChar(int character);
+#define UNITY_OUTPUT_CHAR(ch) UnityOutputChar(ch)
 ~~~
 
-这会关闭默认输出，避免正式固件隐式依赖 semihosting 或 printf。
-
-若使用现有 RTT，可改成：
+`unity_port.c` 再把字符交给 elog：
 
 ~~~c
-#include "SEGGER_RTT.h"
+#ifdef UNITY_USE_ELOG
+#include "elog.h"
+#else
+#include <stdio.h>
+#endif
 
-#define UNITY_OUTPUT_CHAR(ch)              \
-    do {                                   \
-        char unity_ch = (char)(ch);        \
-        SEGGER_RTT_Write(0, &unity_ch, 1); \
-    } while (0)
+void UnityOutputChar(int character)
+{
+#ifdef UNITY_USE_ELOG
+    elog_raw("%c", (char)character);
+#else
+    printf("%c", (char)character);
+#endif
+}
 ~~~
+
+这里不能直接在 Unity 适配层调用 `SEGGER_RTT_Write`，否则会绕过工程统一的日志格式、输出锁和 elog port。
+
+如果工程没有 RTT，则不要定义 `UNITY_USE_ELOG`，并确保已有 `printf` 重定向，例如：
+
+~~~c
+int fputc(int ch, FILE *f)
+{
+    (void)f;
+    HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+    return ch;
+}
+~~~
+
+上面的 UART 示例只说明输出条件；实际串口句柄应替换为工程中已经初始化的句柄。
 
 ### Step 4：配置 Keil
 
@@ -159,6 +196,7 @@ Unity 在嵌入式环境中主要需要：
 
 ~~~text
 UNITY_INCLUDE_CONFIG_H
+UNITY_USE_ELOG
 ~~~
 
 对应工程文件：
@@ -198,6 +236,10 @@ Middlewares/Third_Party/Unity/Test/unity_port_smoke_test.c
 ~~~c
 #include "unity.h"
 
+#ifdef UNITY_USE_ELOG
+#include "debug.h"
+#endif
+
 void setUp(void) {}
 void tearDown(void) {}
 
@@ -208,11 +250,25 @@ static void test_integer(void)
 
 int main(void)
 {
+#ifdef UNITY_USE_ELOG
+    app_elog_init();
+    test_elog();
+    log_i("Unity test runner started");
+#endif
+
     UNITY_BEGIN();
     RUN_TEST(test_integer);
-    return UNITY_END();
+    {
+        int result = UNITY_END();
+#ifdef UNITY_USE_ELOG
+        log_i("Unity test runner finished: %s", result == 0 ? "PASS" : "FAIL");
+#endif
+        return result;
+    }
 }
 ~~~
+
+其中 `app_elog_init()` 和 `test_elog()` 对应工程现有的 `User/Debug/Src/debug.c` 实现。正式测试 target 启用 `UNITY_USE_ELOG` 时，Unity 输出和测试过程日志会共用 elog/RTT；主机 GCC 冒烟测试不定义该宏，因此不会依赖 STM32 的 elog、FreeRTOS 或 RTT。
 
 不希望测试文件定义 main 时，可以改用 unity_main，由独立测试任务或测试 target 调用。
 
@@ -294,11 +350,20 @@ G:\keil5\core\UV4\UV4.exe -b MDK-ARM\STM32F411CEU6_AHT21.uvprojx -o build.log
 
 ### 7.3 目标板测试
 
-1. 把 UNITY_OUTPUT_CHAR 接到 UART 或 RTT。
+1. 先调用工程已有的 `app_elog_init()`，确保 `elog_init()` 和 `elog_start()` 已执行。
 2. 建立独立 Unity Test Target，或提供 unity_main。
 3. 烧录测试固件。
-4. 观察测试输出。
-5. 根据 UNITY_END 返回值判断通过或失败。
+4. 通过 J-Link RTT Viewer 观察 Unity 测试输出。
+5. 根据 `UNITY_END()` 返回值判断通过或失败。
+
+测试入口的关键顺序是：
+
+~~~c
+app_elog_init();
+UNITY_BEGIN();
+RUN_TEST(test_xxx);
+return UNITY_END();
+~~~
 
 ## 8. 本次实际验证结果
 
@@ -310,6 +375,7 @@ G:\keil5\core\UV4\UV4.exe -b MDK-ARM\STM32F411CEU6_AHT21.uvprojx -o build.log
 | TDD 通过路径 | 恢复正确断言后返回 GREEN_EXIT=0 |
 | Keil 完整构建 | 通过，0 Error(s), 0 Warning(s) |
 | Keil XML 工程解析 | 通过 |
+| Unity → elog → RTT 适配编译 | 通过 |
 | STM32 实物 UART/RTT 测试 | 尚未执行 |
 
 ## 9. 常见问题
@@ -319,9 +385,9 @@ G:\keil5\core\UV4\UV4.exe -b MDK-ARM\STM32F411CEU6_AHT21.uvprojx -o build.log
 | Cannot open source input file unity.h | include path 未配置 | 增加 Unity/Inc |
 | Undefined symbol setUp | 没有生命周期函数 | 加入 unity_port.c |
 | Undefined symbol tearDown | 没有生命周期函数 | 加入 unity_port.c |
-| 链接到 semihosting 或 putchar | 默认输出走标准输出 | 定义 UNITY_OUTPUT_CHAR |
+| 链接到 semihosting 或 putchar | 默认输出走标准输出 | 使用 UnityOutputChar 适配函数 |
 | main 重复定义 | 测试和正式固件共用 target | 独立测试 target 或改用 unity_main |
-| 能编译但看不到测试结果 | 输出宏为空 | 接入 UART/RTT |
+| 能编译但看不到测试结果 | elog 未初始化、RTT 未启动、输出被过滤，或 printf 未重定向 | RTT 路径检查 app_elog_init、ELOG_OUTPUT_ENABLE 和 RTT Viewer；printf 路径检查 fputc/_write 重定向 |
 | 主机通过但硬件失败 | 主机未验证硬件时序 | 增加目标板测试 |
 | 测试源未参与构建 | 未加入测试 target | 检查 Keil Project 分组 |
 
@@ -338,12 +404,36 @@ Middlewares/Third_Party/Unity/Test/unity_port_smoke_test.c
 Middlewares/Third_Party/Unity/LICENSE.txt
 ~~~
 
+Unity 适配层只新增 `UnityOutputChar()`；`elog_port.c` 和 RTT 仍复用工程现有实现。
+
 查看差异：
 
 ~~~powershell
 git status --short
 git diff -- MDK-ARM/STM32F411CEU6_AHT21.uvprojx
 git diff --check -- MDK-ARM/STM32F411CEU6_AHT21.uvprojx
+~~~
+
+本次适配层的关键差异如下：
+
+~~~diff
+-#define UNITY_OUTPUT_CHAR(ch) ((void)(ch))
++void UnityOutputChar(int character);
++#define UNITY_OUTPUT_CHAR(ch) UnityOutputChar(ch)
+
++#ifdef UNITY_USE_ELOG
++    elog_raw("%c", (char)character);
++#else
++    printf("%c", (char)character);
++#endif
+~~~
+
+因此切换方式只有一个工程宏：
+
+| 场景 | `UNITY_USE_ELOG` | 输出链路 |
+|---|---|---|
+| 当前工程 | 定义 | Unity → elog → SEGGER RTT |
+| 无 RTT 工程 | 不定义 | Unity → printf → UART/USB CDC 等重定向目标 |
 ~~~
 
 ## 11. 参考资料
@@ -356,4 +446,3 @@ git diff --check -- MDK-ARM/STM32F411CEU6_AHT21.uvprojx
 - [Unity Getting Started Guide](https://github.com/ThrowTheSwitch/Unity/blob/v2.6.1/docs/UnityGettingStartedGuide.md)
 
 博客用于参考教程结构；源码、API 和版本信息以官方仓库为准。
-
