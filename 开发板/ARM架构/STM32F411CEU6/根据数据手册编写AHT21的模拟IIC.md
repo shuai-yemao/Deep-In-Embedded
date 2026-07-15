@@ -50,7 +50,7 @@ GPIO适配层：初始化、写电平、读电平、微秒延时
 3. 地址帧通常为：`7 位地址 + 1 位 R/W + 1 位 ACK`。
 4. 上升时间近似为 `t_rise ≈ 0.8473 × R_p × C_b`，上拉电阻越大，上升沿越慢。
 5. 模拟 IIC 的速度和可靠性取决于 GPIO 切换、延时精度、上拉电阻和总线电容
- 
+
 ### 实际操作步骤
 
 1. 确认 SDA/SCL 引脚、供电电压和上拉电阻。
@@ -153,9 +153,9 @@ Stop ：SCL=0，SDA=0 → 等待 → SCL=1 → 等待 → SDA=1
 | `IICSendNotAck(bus)` | SCL 拉低 → SDA 释放为高 → SCL 拉高产生第 9 个时钟 → SCL 拉低 |
 | `IICSendByte(bus, byte)` | 循环 8 次，取最高位写 SDA，左移数据，在 SCL 高电平期间保持 |
 | `IICReceiveByte(bus)` | SDA 切输入，循环 8 次在 SCL 高电平期间读取 SDA，并左移拼接 |
-| `IIC_Write_One_Byte()` | Start → 写地址+W → ACK → 写寄存器 → ACK → 写数据 → ACK → Stop |
+| `IIC_Write_One_Byte()` | Start → 写地址 +W → ACK → 写寄存器 → ACK → 写数据 → ACK → Stop |
 | `IIC_Write_Multi_Byte()` | 在单次事务中连续发送地址、寄存器和多个数据字节，并逐字节检查 ACK |
-| `IIC_Read_One_Byte()` | 先写地址和寄存器，再重复 Start，发送地址+R，读取 1 字节，NACK，Stop |
+| `IIC_Read_One_Byte()` | 先写地址和寄存器，再重复 Start，发送地址 +R，读取 1 字节，NACK，Stop |
 | `IIC_Read_Multi_Byte()` | 发送地址和寄存器后重复 Start，连续读取数据，中间 ACK，最后 NACK 和 Stop |
 
 > [!info] 分层边界
@@ -187,6 +187,7 @@ CRC 校验应对 `data[0]` 到 `data[5]` 计算 CRC-8，再与 `data[6]` 比较�
 3. `t_rise ≈ 0.8473 × R_p × C_b`。上拉电阻过大，上升沿慢；过小则低电平灌电流增大。
 4. `IICWaitAck()` 必须有超时退出，避免 SDA 被拉死时程序永久阻塞。
 5. AHT21 的测量命令属于设备层；当前 `bsp_aht21_iic.c` 是通用 IIC 传输层，不应把 AHT21 命令硬编码进通用 `IIC_Write_*`/`IIC_Read_*` 接口。
+6. AHT 21 支持完全静态频率，可以实现如当 MCU 故障停止与 AHT 21 通信后，MCU 重启能够与 AHT 21 重新通信恢复至故障前的 IIC 通信阶段
 
 ### 代码与接口对应
 
