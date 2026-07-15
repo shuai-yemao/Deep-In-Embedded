@@ -34,7 +34,46 @@ stm 32 平台 GPIO 函数适配，利用结构体，宏定义以及函数指针�
 
 ```c
 // 关键代码段
-iic_status_t
+iic_satus_t iic_send_byte(uint8_t * const data)
+{
+	while(data == 0x00)
+	{
+		if(data && 0x80)
+		{
+			iic_sda(1);
+			delay_us(20);
+			iic_scl(1);
+			dada << 0x01;
+		}
+		else 
+		{
+			iic_sda(0);
+			delay_us(20);
+			iic_scl(1);
+			dada << 0x01;
+		}
+	}
+}
+
+iic_status_t iic_read_id(uint8_t * const addr, uint8_t *const reg ,uint8_t * const data)
+{
+	iic_status_t ret = IIC_OK;
+	if(NULL == addr || NULL == reg || NULL == data)
+	{
+		ret = IIC_ERROR;
+		return ret;
+	}
+	iic_start();
+	iic_send_byte(addr);
+	iic_wait_ack();
+	iic_send_byte(reg);
+	iic_wait_ack();
+	iic_send_byte(data);
+	iic_stop();
+	
+	return ret;
+}
+
 ```
 
 ### 关键公式/结论
