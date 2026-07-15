@@ -1,135 +1,114 @@
-日期：2026.06
+日期：2026.07
 
-文章标签： #BSP #IIC #BSP
+文章标签： #BSP #IIC #AHT21 #STM32F411CEU6
 
-## 知识点 1：模拟 IIC
+## 知识点 1：根据数据手册编写 AHT21 的模拟 IIC
 
 ### 实际意义
 
-> 为什么会有该知识点？
+AHT21 使用两线 I2C 接口。`bsp_aht21_iic.c` 不调用 STM32 硬件 I2C 外设，而是通过 GPIO 电平变化和微秒延时直接生成总线时序，因此可以把协议层复用到不同 MCU，只需替换 GPIO 适配函数。
 
-模拟 IIC 可以脱离硬件平台，复用性高，只要根据平台做适配，不用大幅度修改代码并重新测试，大大减少了开发时间成本
-### 应用场景
+### AHT21 数据手册要点
 
-> 在实际中主要被用来做什么？
+| 项目 | 内容 |
+| --- | --- |
+| 7 位从机地址 | `0x38` |
+| 写地址字节 | `0x70`（`0x38 << 1`） |
+| 读地址字节 | `0x71`（`(0x38 << 1) + 1`） |
+| 触发测量 | `0xAC 0x33 0x00` |
+| 读取状态 | `0x71` 命令后重新起始，再读取 1 字节 |
+| 软复位 | `0xBA` |
+| 测量返回 | 状态字节 + 20 位湿度 + 20 位温度 + CRC 字节 |
 
-1. IIC 外设快速验证功能
-2. 传感器
+> [!warning] 地址的常见混淆
+> 数据手册给出的 `0x38` 是 7 位地址；`IICSendByte()` 发送前会左移地址，所以调用底层接口时传入 `0x38`，不要提前传入 `0x70`。
+
 ### 核心逻辑/原理
 
-#### 第一步
-stm 32 平台 GPIO 函数适配，利用结构体，宏定义以及函数指针实现，GPIO 初始化，GPIO 读写，GPIO 输入输出模式，GPIO 上下拉电阻
-#### 第二步
-编写 IIC 各时序部分:
-1. IIC 起始位：SCL 和 SDA 空闲状态下为高电平，等 SCL 稳定后，SDA 下拉，等待延时，SCL 下拉
-2. IIC 数据位：SCL 上拉，SDA 需要在 SCL 高电平期间保持电平信号稳定，方便采样
-3. IIC 应答位：SCL 短暂上拉，从机控制 SDA 上拉或者下拉，告诉主机已应答
-4. IIC 停止位：SCL 先上拉，SDA 等待延时，SDA 上拉
-根据 IIC 时序来实现地址帧与数据帧
-5. 地址帧：起始位+7 位地址+1 位读写+1 位应答+停止位
-6. 数据帧：8 位数据即可
-#### 第三步
-根据地址帧和数据帧来实现，读 id，写数据如：
-1. 
+#### 1. 平台适配层
 
-```c
-// 关键代码段
-iic_satus_t iic_send_byte(uint8_t * const data)
-{
-	while(data == 0x00)
-	{
-		if(data && 0x80)
-		{
-			iic_sda(1);
-			delay_us(20);
-			iic_scl(1);
-			dada << 0x01;
-		}
-		else 
-		{
-			iic_sda(0);
-			delay_us(20);
-			iic_scl(1);
-			dada << 0x01;
-		}
-	}
-}
+头文件中的 `iic_gpio_ops_t` 将硬件操作抽象为四个函数：`pf_gpio_init`、`pf_gpio_write`、`pf_gpio_read` 和 `pf_delay_us`。`iic_bus_t` 保存 SDA/SCL 端口、引脚、输入输出模式以及操作表。这样 `bsp_aht21_iic.c` 只关心协议，不依赖 `HAL_GPIO_*`。
 
-iic_status_t iic_read_id(uint8_t * const addr, uint8_t *const reg ,uint8_t * const data)
-{
-	iic_status_t ret = IIC_OK;
-	if(NULL == addr || NULL == reg || NULL == data)
-	{
-		ret = IIC_ERROR;
-		return ret;
-	}
-	iic_start();
-	iic_send_byte(addr);
-	iic_wait_ack();
-	iic_send_byte(reg);
-	iic_wait_ack();
-	iic_send_byte(data);
-	iic_stop();
-	
-	return ret;
-}
+SDA 必须支持“输出低电平”和“释放为输入/高电平”两种状态；SCL 也应使用开漏或等效的释放方式，并配置外部上拉电阻。总线空闲状态是 `SCL=1、SDA=1`。
 
+#### 2. I2C 基本时序
+
+1. **Start**：SCL、SDA 均为高时，将 SDA 拉低，再将 SCL 拉低。
+2. **发送 1 字节**：按 MSB first 发送 8 位。每一位都在 SCL 低电平期间设置 SDA，在 SCL 高电平期间保持稳定供从机采样。
+3. **ACK/NACK**：第 9 个时钟周期由接收方控制 SDA。接收方拉低 SDA 是 ACK，保持释放/高电平是 NACK。
+4. **接收 1 字节**：主机释放 SDA，在 SCL 高电平期间读取 SDA，并按位左移拼接。
+5. **Stop**：先保持 SDA 低并拉高 SCL，最后在 SCL 高电平期间释放 SDA。
+
+`IICStart()`、`IICStop()`、`IICSendByte()`、`IICReceiveByte()`、`IICWaitAck()`、`IICSendAck()` 和 `IICSendNotAck()` 分别对应这些时序。
+
+#### 3. AHT21 测量事务
+
+```text
+Start → 0x70 → ACK → 0xAC → ACK → 0x33 → ACK → 0x00 → ACK → Stop
+等待测量完成（状态位 bit7 为 0）
+Start → 0x71 → ACK → 读取 7 字节 → 前 6 字节后 ACK → 最后一字节后 NACK → Stop
 ```
+
+状态字节的 bit7 是忙标志，bit3 表示校准使能。6 个数据字节按下式拼接：
+
+```text
+raw_humidity = (data[1] << 12) | (data[2] << 4) | (data[3] >> 4)
+raw_temperature = ((data[3] & 0x0F) << 16) | (data[4] << 8) | data[5]
+humidity = raw_humidity * 100 / 2^20
+temperature = raw_temperature * 200 / 2^20 - 50
+```
+
+CRC 校验应对 `data[0]` 到 `data[5]` 计算 CRC-8，再与 `data[6]` 比较；校验失败时不能把结果当作有效温湿度。
 
 ### 关键公式/结论
 
-1.
-2.
-3.
+1. `write_address = 0x38 << 1 = 0x70`，`read_address = 0x71`。
+2. 数据在 SCL 高电平期间必须稳定；SDA 只能在 SCL 低电平期间改变，Start/Stop 是例外。
+3. `t_rise ≈ 0.8473 × R_p × C_b`。上拉电阻过大，上升沿慢；过小则低电平灌电流增大。
+4. `IICWaitAck()` 必须有超时退出，避免 SDA 被拉死时程序永久阻塞。
+5. AHT21 的测量命令属于设备层；当前 `bsp_aht21_iic.c` 是通用 IIC 传输层，不应把 AHT21 命令硬编码进通用 `IIC_Write_*`/`IIC_Read_*` 接口。
+
+### 代码与接口对应
+
+| 代码接口 | 作用 |
+| --- | --- |
+| `IICInit()` | 配置 SDA/SCL，进入总线空闲状态 |
+| `IICStart()` / `IICStop()` | 生成起始/停止条件 |
+| `IICSendByte()` | MSB first 发送 8 位 |
+| `IICReceiveByte()` | 读取 8 位并拼接为字节 |
+| `IICWaitAck()` | 释放 SDA，读取从机 ACK，并带超时 |
+| `IICSendAck()` / `IICSendNotAck()` | 主机读取多字节时应答或结束读取 |
+| `IIC_Write_Multi_Byte()` | 通用写事务；AHT21 可用于发送测量命令 |
+| `IIC_Read_Multi_Byte()` | 通用连续读取；需确认具体 AHT21 状态读取是否要求 Stop 后重新 Start |
 
 ### 实际操作步骤
 
-> 动手验证/配置的具体操作。
-
-1.
-2.
-3.
+1. 根据原理图确认 SDA/SCL 引脚、供电电压和外部上拉电阻。
+2. 实现 `iic_gpio_ops_t`，确保 GPIO 释放时不会主动推高总线。
+3. 调用 `IICInit()`，先用逻辑分析仪确认空闲、Start、Stop 和 9 位 ACK 波形。
+4. 发送 `0xAC 0x33 0x00`，轮询状态 bit7，等待测量完成。
+5. 读取 7 字节，验证 CRC，再拼接原始湿度/温度值并换算。
+6. 分别测试无器件、SDA 被拉低、ACK 超时、CRC 错误和正常测量，确认错误路径会返回而不是死循环。
 
 ### 常见问题
 
-> 现象 → 根因 → 修复
-
----
-
-## 知识点 2：xxx
-
-> 同上结构，根据内容选择需要的子节。
+| 现象 | 可能原因 | 检查方向 |
+| --- | --- | --- |
+| 一直收不到 ACK | 地址位宽错误、无上拉、引脚接反 | 确认发送 `0x70/0x71`，检查总线电平 |
+| 读到的数据全为 0 或 1 | SDA 未切换为输入/释放 | 检查 `SDA_Input_Mode()` 和 GPIO 模式 |
+| 读状态偶发失败 | 把 AHT21 状态读取误写成 repeated start | 按数据手册确认 Stop/Start 时序 |
+| 程序卡死 | 等 ACK 没有超时 | 保留 `IIC_ACK_TIMEOUT` 保护 |
+| 温湿度异常 | 位拼接、换算或 CRC 错误 | 先打印 7 原始字节，再逐步验证公式 |
 
 ---
 
 ## 📎 相关资料
 
-### 🎥 视频链接
-
-> B 站 / YouTube 教程，优先选项目实战类和原理动画类。
-
-- [标题](url) — 一句话说明讲了什么
-
-### 🔗 博客/文档链接
-
-> 分析最透彻的博客、官方文档、社区帖子。
-
-- [标题](url) — CSDN / 博客园 / 飞书 / 知乎
-- [标题](url) — 芯片厂商官方文档
-
-### 💻 仓库链接
-
-> GitHub / Gitee 源码仓库，含 Demo 工程和工具链。
-
-- [owner/repo](url) — 一句话描述
-- [owner/repo](url)
-
 ### 📄 代码/附件
 
-> 本地 PDF、代码包、工具链文件。
-
-- [[附件文件.pdf]]
-- [[示例代码.zip]]
+- [[AHT21数据手册]]
+- [[I2C]]
+- [[AHT21的driver文件架构设计思路]]
 
 ---
 
