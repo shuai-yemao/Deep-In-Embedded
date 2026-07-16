@@ -41,11 +41,6 @@
 默认的北向接口有 handle 构造，handle 注册，以及外设操作函数
 
 默认的南向接口有 OS 层的队列，线程，延时以及临近区操作函数，core 层有系统 tick
-
-```c
-// 关键代码段
-```
-
 ### Handler 的分层边界
 
 ```mermaid
@@ -253,19 +248,19 @@ Adapter 还负责把 `osStatus_t` 映射为 `TEMP_HUMI_*` 状态码，避免 han
 
 > 自问自答，检验理解深度。按难度递进排列。
 
-1.什么是高内聚低耦合?
+1.
 
-2．函数指针定义的接口相较于包含头文件它的优势在哪里?
+2．
 
 ## 🟢 基础
 
 > 最基本的概念和用法，入门必知。
 
-### Q 1
+### Q 1：什么是高内聚低耦合?
 
 A 1：
 
-### Q 2
+### Q 2：函数指针定义的接口相较于包含头文件它的优势在哪里?
 
 A 2：
 
@@ -291,6 +286,8 @@ A 4：
 
 > 3-5 句话回顾核心要点，用自己的话复述。
 
+本工程的 handler 位于 AHT21 driver 之上，负责管理传感器实例、统一读取接口、事件队列、处理线程和读取频率，而不直接处理 AHT21 命令或 IIC 时序。通过 `temp_humi_handler_sensor_ops_t`，AHT21 driver 被包装成通用温湿度传感器接口，handler 可以用同一套逻辑管理不同传感器。`system_adapter.c` 将 STM32 GPIO、`HAL_GetTick()`、CMSIS-RTOS 队列/线程、延时和临界区操作注入 handler，实现平台解耦。一次完整的数据链路是：Adapter 绑定资源 → 实例化 driver → 初始化 handler → 注册传感器 → 投递事件 → handler 线程读取 → 回调返回数据。设计时必须特别注意事件中输出指针的生命周期、实例数组的并发保护、队列和线程创建失败时的资源回滚，以及 `lifetime` 限频与 driver 内部测量超时之间的区别。
+
 ---
 
 # 📎 参考资料
@@ -301,25 +298,34 @@ A 4：
 
 > B 站 / YouTube 教程，优先选项目实战类和原理动画类。
 
-- [标题](url) — 一句话说明讲了什么
+- 暂无固定视频资源；本笔记主要依据工程源码、接口注释、RTOS 运行链路和实际调试结果。
 
 ## 🔗 博客/文档链接
 
 > 分析最透彻的博客、官方文档、社区帖子。
 
-- [标题](url) — CSDN / 博客园 / 飞书 / 知乎
-- [标题](url) — 芯片厂商官方文档
+- [CMSIS-RTOS2 API Reference](https://arm-software.github.io/CMSIS_6/latest/RTOS2/index.html) — 用于核对消息队列、线程、延时和内核锁等接口语义。
+- [FreeRTOS Documentation](https://www.freertos.org/Documentation/02-Kernel/04-API-references) — 用于理解任务、队列、临界区和调度相关概念。
+- [[AHT21的driver文件架构设计思路]] — 说明单个 AHT21 driver 的初始化、测量、CRC 和状态码设计。
+- [[AHT21驱动调试-Bug记录]] — 记录 AHT21 驱动和 adapter 联调过程中遇到的问题、实验和修复方案。
+- [[根据数据手册编写AHT21的模拟IIC]] — 说明 AHT21 数据手册、模拟 IIC 时序和底层通信流程。
 
 ## 💻 仓库链接
 
 > GitHub / Gitee 源码仓库，含 Demo 工程和工具链。
 
-- [owner/repo](url) — 一句话描述
-- [owner/repo](url)
+- 当前笔记对应本地工程：`STM32F411CEU6_AHT21`，包含 driver、handler、IIC 和 System Adapter 实现。
+- 当前工程使用的 Unity 源码位于 `Middlewares/Third_Party/Unity/`，用于验证传感器接口和适配层逻辑。
 
 ## 📄 代码/附件
 
 > 本地 PDF、代码包、工具链文件。
 
-- [[附件文件.pdf]]
-- [[示例代码.zip]]
+- `BSP/AHT21/handler/Inc/bsp_temp_humi_handler.h` — handler 状态码、事件、传感器操作表、OS 接口和实例结构体。
+- `BSP/AHT21/handler/Src/bsp_temp_humi_handler.c` — 实例化、队列/线程创建、传感器注册、lifetime 限频和事件读取实现。
+- `System/Adapter/Inc/system_adapter.h` — 系统适配层的公开声明和工程状态接口。
+- `System/Adapter/Src/system_adapter.c` — GPIO、软件 IIC、Tick、CMSIS-RTOS、互斥锁和 handler 资源绑定。
+- `BSP/AHT21/driver/Inc/bsp_aht21_driver.h` — AHT21 driver 的北向操作接口和状态码。
+- `BSP/AHT21/driver/Src/bsp_aht21_driver.c` — AHT21 设备级初始化、测量、休眠、唤醒和 CRC 校验。
+- `System/Adapter/Test/system_adapter_iic_unity_test.c` — IIC/Adapter 测试入口和测试集成参考。
+- [[AHT21的driver文件架构设计思路]]
