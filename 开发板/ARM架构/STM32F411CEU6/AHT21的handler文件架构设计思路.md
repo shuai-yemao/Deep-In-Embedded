@@ -166,16 +166,16 @@ flowchart TD
 
 `system_adapter.c` 是工程绑定层，不负责定义 handler 业务规则，而是把真实平台资源填入接口表：
 
-| Adapter 内容 | 绑定对象 | 用途 |
-| --- | --- | --- |
-| `stm32_gpio_init/write/read` | STM32 GPIO、PB13/PB14 | 软件 IIC 的 SDA/SCL 操作 |
-| `stm32_delay_us` | 微秒延时 | IIC 位级时序 |
-| `adapter_get_time_ms` | `HAL_GetTick()` | handler 的 lifetime 和超时 |
-| `adapter_handler_os_delay_ms` | `osDelay()` | handler 线程让出 CPU |
-| `adapter_handler_os_queue_*` | CMSIS-RTOS Message Queue | 事件异步传递 |
-| `adapter_handler_os_thread_*` | CMSIS-RTOS Thread | 创建和删除 handler 线程 |
-| `adapter_handler_os_critical_*` | `osKernelLock/Unlock` | 保护实例注册和读取 |
-| `adapter_lock/unlock` | AHT21 互斥锁 | 保护底层传感器通信 |
+| Adapter 内容                      | 绑定对象                     | 用途                     |
+| ------------------------------- | ------------------------ | ---------------------- |
+| `stm32_gpio_init/write/read`    | STM32 GPIO、PB13/PB14     | 软件 IIC 的 SDA/SCL 操作    |
+| `stm32_delay_us`                | 微秒延时                     | IIC 位级时序               |
+| `adapter_get_time_ms`           | `HAL_GetTick()`          | handler 的 lifetime 和超时 |
+| `adapter_handler_os_delay_ms`   | `osDelay()`              | handler 线程让出 CPU       |
+| `adapter_handler_os_queue_*`    | CMSIS-RTOS Message Queue | 事件异步传递                 |
+| `adapter_handler_os_thread_*`   | CMSIS-RTOS Thread        | 创建和删除 handler 线程       |
+| `adapter_handler_os_critical_*` | `osKernelLock/Unlock`    | 保护实例注册和读取              |
+| `adapter_lock/unlock`           | AHT21 互斥锁                | 保护底层传感器通信              |
 
 Adapter 还负责把 `osStatus_t` 映射为 `TEMP_HUMI_*` 状态码，避免 handler 直接依赖 CMSIS-RTOS 的错误枚举。
 
