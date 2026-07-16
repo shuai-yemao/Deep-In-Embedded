@@ -279,37 +279,29 @@ if (self->is_inited != AHT21_INIT) {
 
 > 自问自答，检验理解深度。按难度递进排列。
 
-1.什么是面向对象？什么是面向过程？
-
-2.IIC 为什么要上拉电阻？
-
-3。Const 关键词的作用是什么？是在编译阶段产生作用，还是运行时阶段？
-
-4．请考虑如何在接口中加入 Const 来指示输入和输出参数，在指针符号前加入 const 和指针符号后加入 const 的区别是什么？
-
-1．IIC 总线上的动作分为哪几种？IIC 的 start 动作 SDA 和 SCL 如何变化的?
-
-2.IIC 的读信号和写信号有什么区别
-
 ## 🟢 基础
 
 > 最基本的概念和用法，入门必知。
 
-### Q1
+### Q1：什么是面向对象？什么是面向过程？
 
 A1：
 
-### Q2
+### Q2：IIC 为什么要上拉电阻？
 
 A2：
+
+### Q 3：Const 关键词的作用是什么？是在编译阶段产生作用，还是运行时阶段？
+
+A 3:
 
 ## 🟡 进阶
 
 > 容易踩的坑和常见误区。
 
-### Q3
+### Q 4：请考虑如何在接口中加入 Const 来指示输入和输出参数，在指针符号前加入 const 和指针符号后加入 const 的区别是什么？
 
-A3：
+A 4：
 
 ## 🔴 困难
 
@@ -325,6 +317,8 @@ A4：
 
 > 3-5 句话回顾核心要点，用自己的话复述。
 
+本工程的 AHT21 driver 通过“设备协议层 + IIC 适配层 + 系统资源接口”实现了解耦，driver 不直接依赖 GPIO、HAL 或 FreeRTOS。编写驱动时，应先根据数据手册和原理图确定命令、时序、等待时间、状态位和数据格式，再在 `.h` 中定义配置、状态码、南向依赖和北向 API，最后在 `.c` 中实现内部流程。`bsp_aht21_driver_inst()` 负责资源检查、接口绑定、初始化和设备检测；温湿度读取还必须经过忙状态检查、CRC 校验和 20 位原始数据换算。开发过程中遇到的 `NO_TAG`、状态读取协议不匹配、初始化等待不足和枚举值误比较说明，驱动验证必须同时覆盖接口类型、协议事务、时间约束和工程集成环境。最终应使用 mock/Unity、RTT 日志和逻辑分析仪波形进行分层验证，并保留错误码和问题记录以支持后续维护。
+
 ---
 
 # 📎 参考资料
@@ -335,25 +329,33 @@ A4：
 
 > B 站 / YouTube 教程，优先选项目实战类和原理动画类。
 
-- [标题](url) — 一句话说明讲了什么
+- 暂无固定视频资源；本笔记以工程源码、AHT21 数据手册和实际 RTT/波形验证为主要依据。
 
 ## 🔗 博客/文档链接
 
 > 分析最透彻的博客、官方文档、社区帖子。
 
-- [标题](url) — CSDN / 博客园 / 飞书 / 知乎
-- [标题](url) — 芯片厂商官方文档
+- [I2C-bus specification and user manual, UM10204](https://www.nxp.com/docs/en/user-guide/UM10204.pdf) — 用于核对 Start/Stop、数据有效窗口、ACK/NACK 和总线电气规则。
+- [EasyLogger documentation](https://github.com/armink/EasyLogger) — 用于核对 `log_e`、`elog_e`、`LOG_TAG` 和日志 tag 传递方式。
+- [[AHT21驱动调试-Bug记录]] — 本工程真实问题、根因实验和修复方案。
+- [[根据数据手册编写AHT21的模拟IIC]] — AHT21 地址、模拟 IIC 时序、命令事务和数据解析基础。
 
 ## 💻 仓库链接
 
 > GitHub / Gitee 源码仓库，含 Demo 工程和工具链。
 
-- [owner/repo](url) — 一句话描述
-- [owner/repo](url)
+- 当前笔记对应本地工程：`STM32F411CEU6_AHT21`，不额外绑定外部 Demo 仓库。
+- [STM32F411CEU6_AHT21](https://gitee.com/TNSH/shuai/tree/aht21/) -gitee 仓库
 
 ## 📄 代码/附件
 
 > 本地 PDF、代码包、工具链文件。
 
-- [[附件文件.pdf]]
-- [[示例代码.zip]]
+- `BSP/AHT21/driver/Inc/bsp_aht21_driver.h` — 驱动状态码、南向接口、实例结构体和北向函数指针。
+- `BSP/AHT21/driver/Inc/bsp_aht21_config.h` — AHT21 地址、命令、状态掩码、延时和数据长度配置。
+- `BSP/AHT21/driver/Src/bsp_aht21_driver.c` — 实例化、初始化、设备检测、测量、CRC、休眠和唤醒实现。
+- `BSP/AHT21/iic/Inc/bsp_aht21_iic.h` — IIC 总线和 GPIO 操作接口定义。
+- `BSP/AHT21/iic/Src/bsp_aht21_iic.c` — 软件 IIC Start/Stop、字节收发、ACK 和读写事务实现。
+- `System/Adapter/Src/system_adapter.c` — 将 IIC、时间基准、RTOS 和中断接口绑定到 driver 的工程适配。
+- `Middlewares/Third_Party/Unity/` — Unity 测试框架源码，用于驱动接口和协议逻辑测试。
+- [[AHT21的handler文件架构设计思路]] — driver 上层 handler 的数据组织和业务调用关系。
