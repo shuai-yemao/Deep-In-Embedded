@@ -146,20 +146,20 @@ Stop ：SCL=0，SDA=0 → 等待 → SCL=1 → 等待 → SDA=1
 
 ### IIC 函数的具体逻辑
 
-| 函数 | 具体执行逻辑 |
-| --- | --- |
-| `IICInit(bus)` | 检查 `bus/ops`，初始化 SCL 和 SDA，释放两根线，建立空闲状态 |
-| `IICStart(bus)` | SDA 输出 → SCL 释放为高 → SDA 释放为高 → SDA 拉低 → SCL 拉低 |
-| `IICStop(bus)` | SCL 拉低、SDA 拉低 → SCL 释放为高 → SDA 释放为高 |
-| `IICWaitAck(bus)` | SDA 切输入 → SCL 拉高 → 轮询 SDA → 超时则 Stop → 成功后 SCL 拉低并恢复 SDA 输出 |
-| `IICSendAck(bus)` | SCL 拉低 → SDA 拉低 → SCL 拉高产生第 9 个时钟 → SCL 拉低 |
-| `IICSendNotAck(bus)` | SCL 拉低 → SDA 释放为高 → SCL 拉高产生第 9 个时钟 → SCL 拉低 |
-| `IICSendByte(bus, byte)` | 循环 8 次，取最高位写 SDA，左移数据，在 SCL 高电平期间保持 |
-| `IICReceiveByte(bus)` | SDA 切输入，循环 8 次在 SCL 高电平期间读取 SDA，并左移拼接 |
-| `IIC_Write_One_Byte()` | Start → 写地址 +W → ACK → 写寄存器 → ACK → 写数据 → ACK → Stop |
-| `IIC_Write_Multi_Byte()` | 在单次事务中连续发送地址、寄存器和多个数据字节，并逐字节检查 ACK |
-| `IIC_Read_One_Byte()` | 先写地址和寄存器，再重复 Start，发送地址 +R，读取 1 字节，NACK，Stop |
-| `IIC_Read_Multi_Byte()` | 发送地址和寄存器后重复 Start，连续读取数据，中间 ACK，最后 NACK 和 Stop |
+| 函数                       | 具体执行逻辑                                                      |
+| ------------------------ | ----------------------------------------------------------- |
+| `IICInit(bus)`           | 检查 `bus/ops`，初始化 SCL 和 SDA，释放两根线，建立空闲状态                     |
+| `IICStart(bus)`          | SDA 输出 → SCL 释放为高 → SDA 释放为高 → SDA 拉低 → SCL 拉低              |
+| `IICStop(bus)`           | SCL 拉低、SDA 拉低 → SCL 释放为高 → SDA 释放为高                         |
+| `IICWaitAck(bus)`        | SDA 切输入 → SCL 拉高 → 轮询 SDA → 超时则 Stop → 成功后 SCL 拉低并恢复 SDA 输出 |
+| `IICSendAck(bus)`        | SCL 拉低 → SDA 拉低 → SCL 拉高产生第 9 个时钟 → SCL 拉低                  |
+| `IICSendNotAck(bus)`     | SCL 拉低 → SDA 释放为高 → SCL 拉高产生第 9 个时钟 → SCL 拉低                |
+| `IICSendByte(bus, byte)` | 循环 8 次，取最高位写 SDA，左移数据，在 SCL 高电平期间保持                         |
+| `IICReceiveByte(bus)`    | SDA 切输入，循环 8 次在 SCL 高电平期间读取 SDA，并左移拼接                       |
+| `IIC_Write_One_Byte()`   | Start → 写地址 +W → ACK → 写寄存器 → ACK → 写数据 → ACK → Stop        |
+| `IIC_Write_Multi_Byte()` | 在单次事务中连续发送地址、寄存器和多个数据字节，并逐字节检查 ACK                          |
+| `IIC_Read_One_Byte()`    | 先写地址和寄存器，再重复 Start，发送地址 +R，读取 1 字节，NACK，Stop                |
+| `IIC_Read_Multi_Byte()`  | 发送地址和寄存器后重复 Start，连续读取数据，中间 ACK，最后 NACK 和 Stop              |
 
 > [!info] 分层边界
 > `IIC_*` 函数只负责总线位级时序；AHT21 的 `0xAC`、`0x33`、`0x00`、忙标志、数据换算和 CRC 应由 AHT21 设备驱动层负责。
@@ -272,6 +272,7 @@ CRC 校验应对 `data[0]` 到 `data[5]` 计算 CRC-8，再与 `data[6]` 比较�
 > 自问自答，检验理解深度。按难度递进排列。
 
 2.
+
 ### 🟢 基础
 
 #### Q 1: 为什么要用模拟 IIC?与硬件 IIC 有何区别？
@@ -298,8 +299,10 @@ $$
 #### Q 3: IIC 总线上的动作分为哪几种？IIC 的 start 动作 SDA 和 SCL 如何变化的?
 
 A 3：
-1. 起始位+停止位+应答位+数据位
-2. 在 SCL 保持空闲状态信号稳定情况下，SDA 下拉，经过一定延时等待，SCL 下拉
+
+1. 起始位 + 停止位 + 应答位 + 数据位
+2. SDAGPIO 设置为输出模式，释放 SCL 和 SDA，等待 SCL 信号稳定后，SDA 下拉，经过一定延时等待，SCL 下拉
+
 ### 🟡 进阶
 
 #### Q 4: 为什么叫释放 SCL 和释放 SDA 信号?
@@ -312,8 +315,10 @@ A 4：
 #### Q 5: IIC 的读信号和写信号有什么区别
 
 A 5：
-1. 读信号：起始位 +7 位设备地址+读写位+应答位+8 位寄存器地址+应答位+起始位+((7 位地址位+读写位）整体+1）+应答位+接收到的 8 位寄存器内数据+应答位+停止位
-2. 写信号：起始位 +7 位设备地址+应答位+8 位寄存器地址+应答位+写入的8 位寄存器内数据+应答位+停止位
+
+1. 读信号：起始位 start+7 位设备地址 addr+ 读写位 w(0)+ 应答位 ack+8 位寄存器地址 reg+ 应答位 ack+ 起始位 start+7 位地址位 addr+ 读写位 r(1)+ 应答位 ack+ 接收到的 8 位寄存器内数据 readdata+ 发送无应答位 nack+ 停止位 stop
+2. 写信号：起始位 start+7 位设备地址 addr+ 读写位 w(0)+ 应答位 ack+8 位寄存器地址 reg+ 应答位 ack+ 写入的 8 位寄存器内数据 senddata+ 应答位 ack+ 停止位 stop
+
 ### 🔴 困难
 
 #### Q 4
