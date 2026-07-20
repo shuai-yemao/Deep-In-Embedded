@@ -10,13 +10,13 @@
 
 > 用一句话说清楚这个知识点是什么。
 
-Handler 位于 Driver 之上、应用层之下，通过依赖注入的 OS 接口和统一的传感器操作表，把"谁在采数据、什么时候采、采完通知谁"的管理逻辑从具体芯片驱动中剥离出来。
+Handler 位于 Driver 之上、应用层之下，通过依赖注入的 OS 接口和统一的传感器操作表，把 " 谁在采数据、什么时候采、采完通知谁 " 的管理逻辑从具体芯片驱动中剥离出来。
 
 ## 实际意义
 
 > 为什么会有该知识点？解决了什么实际问题？
 
-MPU6050 驱动（[[MPU6050的driver文件架构设计思路]]）解决了"怎么操作寄存器"的问题，但没有解决"怎么管理数据流"的问题。实际工程中面临：
+MPU6050 驱动（[[MPU6050的driver文件架构设计思路]]）解决了 " 怎么操作寄存器 " 的问题，但没有解决 " 怎么管理数据流 " 的问题。实际工程中面临：
 
 1. **中断上下半部分离**：MPU6050 数据就绪可达 8kHz，EXTI ISR 必须极短（<5μs），不能在里面解码数据、算时间、打日志。需要一个机制把重活从 ISR 搬到任务上下文。
 2. **多来源消息统一调度**：数据既可能来自 DMA ISR（高频被动推送），也可能来自应用任务（低频主动查询）。两种来源要在同一套逻辑里串行处理，不能打架。
@@ -58,7 +58,7 @@ graph TB
     DRIVER -->|"mpu6050_dma_notify_t → bsp_imu_handler_dma_notify_from_isr"| H_ISR
 ```
 
-### 1. 把"驱动操作"提升为"传感器管理服务"
+### 1. 把 " 驱动操作 " 提升为 " 传感器管理服务 "
 
 Driver 只管一个 MPU6050 的寄存器读写和设备状态。Handler 管的是：
 
@@ -188,7 +188,7 @@ classDiagram
 - **`imu_handler_sensor_ops_t`**：Handler 与 Driver 之间的适配协议。`pf_decode_frame` 是 Adapter 实现的——把 14 字节原始帧转为 `imu_handler_data_t`（大端拼接 int16_t）。`pf_set_dma_notify` 把 Handler 的 `bsp_imu_handler_dma_notify_from_isr` 注册到 Driver 的 `pf_dma_notify` 函数指针上。
 - **`imu_sensor_node_t`**：每个注册的实例一个节点。`instance` 指向 `bsp_mpu6050_driver_t`，`ops` 指向对应的操作表，`handler` 回指所属 Handler，`instance_index` 贯穿整条数据链路。
 - **`imu_handler_message_t`**：队列消息体，用 union 节省内存。`READ_EVENT` 携带事件指针（不复制数据，调用方负责生命周期）；`DMA_FRAME` 携带帧副本（ISR 己复制，线程可直接消费）。
-- **`imu_handler_os_t`**：聚合了 6 类 OS 接口。注入 NULL 的接口被视为"未使能"，调用时做空检查。
+- **`imu_handler_os_t`**：聚合了 6 类 OS 接口。注入 NULL 的接口被视为 " 未使能 "，调用时做空检查。
 
 ### 5. 生命周期与资源管理
 
@@ -579,7 +579,7 @@ mpu_drv.pf_deinit(&mpu_drv);  // 写 SLEEP 位 → 标记 NOT_INITED
 
 ### 发现的问题
 
-1. **回调指针和 context 的竞态窗口**：应用任务调 `set_data_callback` 时，读取线程可能正在 `process_dma_frame` 中检查和使用回调指针。不加临界区会出现"检查通过 → 被清空 → 空指针调用"。
+1. **回调指针和 context 的竞态窗口**：应用任务调 `set_data_callback` 时，读取线程可能正在 `process_dma_frame` 中检查和使用回调指针。不加临界区会出现 " 检查通过 → 被清空 → 空指针调用 "。
 2. **信号量定义了但未在数据路径中使用**：Handler 创建了二值信号量（initial_count=1），但 `latest_data` 的保护实际走临界区而非信号量。两套机制并存但只有一套生效，信号量属于预留接口。
 3. **`pf_instance_register` 无临界区保护**：注册修改 `instance_group` 和 `instance_num` 时没加锁。当前启动阶段单线程操作规避了此问题，但未来支持运行时热注册需加锁。
 4. **deinit 直接删线程**：`pf_os_thread_delete` 不等线程函数 return。如果线程正在 `pf_decode_frame` 中操作外部 buffer，buffer 可能被释放而线程还在写入。
@@ -587,16 +587,16 @@ mpu_drv.pf_deinit(&mpu_drv);  // 写 SLEEP 位 → 标记 NOT_INITED
 
 ### 根因分析
 
-问题 1~3 根源相同：Handler 设计为"消息队列单消费者"模型，大部分数据路径天然无竞争。但回调配置走的是另一条路——写者和读者是不同的执行上下文，必须显式同步。当前代码已加临界区（问题 1 已修复），回调在临界区外调用是刻意设计（防死锁）。
+问题 1~3 根源相同：Handler 设计为 " 消息队列单消费者 " 模型，大部分数据路径天然无竞争。但回调配置走的是另一条路——写者和读者是不同的执行上下文，必须显式同步。当前代码已加临界区（问题 1 已修复），回调在临界区外调用是刻意设计（防死锁）。
 
-问题 4 是 RTOS 线程删除语义的固有限制——`vTaskDelete` 不会等线程 return。标准做法是 deinit 前先发"退出"消息让线程自己 return，再删句柄。
+问题 4 是 RTOS 线程删除语义的固有限制——`vTaskDelete` 不会等线程 return。标准做法是 deinit 前先发 " 退出 " 消息让线程自己 return，再删句柄。
 
 问题 5 不是 bug 是设计权衡。50ms = 20Hz，对姿态解算（通常 100~200Hz）已够用。
 
 ### 改进方法
 
 1. 当前临界区保护方案已覆盖关键路径，维持现状。
-2. deinit 改为"发退出消息 → 等线程 return → 删句柄"三段式。
+2. deinit 改为 " 发退出消息 → 等线程 return → 删句柄 " 三段式。
 3. 注册实例时加临界区，读取线程遍历 `instance_group` 时同样处理。
 4. 根据应用需求调整 `IMU_HANDLER_DMA_LIFETIME_MS`：姿态解算 10~20ms，振动分析 1~5ms。
 
@@ -640,7 +640,7 @@ A 4：
 
 > 3-5 句话回顾核心要点，用自己的话复述。
 
-Handler 位于 Driver 之上，通过 `imu_handler_sensor_ops_t` 操作表隔离具体 IMU 驱动，通过 `imu_handler_os_t` 接口表隔离具体 RTOS，实现"管理传感器实例和事件调度"与"操作具体芯片寄存器"的彻底分离。核心机制是消息队列统一调度——无论 DMA ISR 的帧还是应用任务的读取请求，都在同一条读取线程中串行处理，天然无并发竞争。ISR 桥接函数只做帧复制和 FromISR 投递（<5μs），解码和 lifetime 限频推迟到线程，保证中断响应速度。初始化按信号量→队列→线程顺序创建，失败时逆序回滚；临界区保护回调指针和 latest_data 的并发访问，但回调本身在临界区外调用以防止死锁。
+Handler 位于 Driver 之上，通过 `imu_handler_sensor_ops_t` 操作表隔离具体 IMU 驱动，通过 `imu_handler_os_t` 接口表隔离具体 RTOS，实现 " 管理传感器实例和事件调度 " 与 " 操作具体芯片寄存器 " 的彻底分离。核心机制是消息队列统一调度——无论 DMA ISR 的帧还是应用任务的读取请求，都在同一条读取线程中串行处理，天然无并发竞争。ISR 桥接函数只做帧复制和 FromISR 投递（<5μs），解码和 lifetime 限频推迟到线程，保证中断响应速度。初始化按信号量→队列→线程顺序创建，失败时逆序回滚；临界区保护回调指针和 latest_data 的并发访问，但回调本身在临界区外调用以防止死锁。
 
 ---
 
