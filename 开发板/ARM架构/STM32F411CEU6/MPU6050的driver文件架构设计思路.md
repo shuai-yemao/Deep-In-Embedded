@@ -255,6 +255,7 @@ graph TB
 ```
 
 关键设计点：
+
 - 指针交换发生在 EXTI 关闭期间，不会和新数据中断竞争。
 - 永远有一个 buffer 是稳定的——任务线程读 `read_buffer` 时 DMA 在写 `write_buffer`，互不干扰。
 - ISR 里只复制帧到消息体，不解码不计算——重活推迟到线程。
@@ -324,6 +325,7 @@ Driver 所有方法（`pf_init`、`pf_get_data`、`pf_sleep` 等）在 `bsp_mpu6
 | 12 ~ 13 | GYRO_ZOUT | `gyro_z` |
 
 拼接方式（源码 `mpu6050_get_data` 中实现）：
+
 ```c
 accel_x = (int16_t)(((uint16_t)raw[0] << 8) | raw[1]);   // 大端组合
 ```
@@ -548,6 +550,7 @@ mpu_drv.pf_deinit(&mpu_drv);  // 写 PWR_MGMT_1.SLEEP → 标记 NOT_INITED
 **定位**：先在 `mpu6050_read_id` 入口加断点，看 `mpu6050_read_regs(self, 0x75, &id, 1)` 的返回值。如果返回 `MPU6050_ERRORTIMEOUT`，用逻辑分析仪抓 I2C 波形——SDA 被从机一直拉高不放 = 地址不对或芯片没响应。
 
 **修复**：
+
 1. 检查 `AD0` 引脚电平 → 决定地址是 0x68 还是 0x69
 2. 用万用表量 SDA/SCL 对 VCC 的电压 → 确保上拉电阻存在
 3. 在 `bsp_mpu6050_driver_inst` 之前确认 `HAL_I2C_IsDeviceReady(&hi2c1, 0x68<<1, 3, 100)` 返回 HAL_OK
@@ -562,14 +565,17 @@ mpu_drv.pf_deinit(&mpu_drv);  // 写 PWR_MGMT_1.SLEEP → 标记 NOT_INITED
 - **DMA 启动失败后 EXTI 未恢复**：源码 `mpu6050_irq_callback` 中，如果 `INT_STATUS` 检查不通过或 `dma_init` 失败，会走 `callback_restore_irq` 分支恢复 EXTI。但如果 `pf_mask_data_ready_irq` 本身成功而后续 `pf_unmask_data_ready_irq` 失败，EXTI 永远关闭。
 
 **定位**：利用源码中预留的 trace 接口：
+
 ```c
 // 逻辑分析仪抓 TRACE_Pin：
 //   level=1 → 进入 irq_callback
 //   level=0 → 退出
 ```
+
 如果 TRACE_Pin 拉高后一直不拉低 = `irq_callback` 内某处死等或未走完正常退出路径。同时用 `DEBUG_MPU6050_OUT` 打开日志看 `stage=irq, result=ignored` 的打印频率。
 
 **修复**：
+
 1. 确认 `NVIC_SetPriority(EXTIx_IRQn, 5)` 优先级合理（数字越小越高，0 为最高）
 2. 检查 `mpu6050_irq_callback` 的 `callback_restore_irq` 标签处是否确实调了 `pf_unmask_data_ready_irq`
 3. 如果 INT_STATUS 经常不匹配（日志频繁打印 `int_status=0x00`），检查 INT 引脚配置——可能配置为电平触发而非边沿触发导致重复进中断
@@ -579,11 +585,13 @@ mpu_drv.pf_deinit(&mpu_drv);  // 写 PWR_MGMT_1.SLEEP → 标记 NOT_INITED
 **现象**：DMA 帧正常投递到队列，但 `latest_data` 始终为零，`latest_status` 为非 OK 值。
 
 **根因**：解码路径 `imu_handler_process_dma_frame` 的失败点：
+
 - `pf_decode_frame` 返回错误 → Adapter 的解码实现有问题（字节序错误、帧格式不对）
 - `pf_get_time_ms` 返回错误 → 时基接口未正确注入
 - `lifetime` 机制让数据在 `IMU_HANDLER_DMA_LIFETIME_MS`（默认 50ms）内被跳过 → `IMU_HANDLER_OK` 返回但未解码
 
 **修复**：
+
 1. 检查 Adapter 的 `pf_decode_frame` 实现——确认 14 字节布局和字节序与大端一致
 2. 在 `imu_handler_process_dma_frame` 的 `pf_decode_frame` 调用前后加断点，对比原始 `signal->frame` 和解码后的 `data`
 3. 如果只是 lifetime 限频太激进，调小 `IMU_HANDLER_DMA_LIFETIME_MS`（项目默认为 50ms = 20Hz 等效刷新率）
@@ -595,6 +603,7 @@ mpu_drv.pf_deinit(&mpu_drv);  // 写 PWR_MGMT_1.SLEEP → 标记 NOT_INITED
 **根因**：源码在所有入口都有状态检查——`bsp_mpu6050_driver_inst` 拒绝 `is_inited == INITED` 的实例，`imu_handler_instance_register` 拒绝重复的 instance 指针和超出 `IMU_NUM_MAX` 的场景。如果上层代码在未调 `pf_deinit` 的情况下再次调 `pf_init`，会被拦截但资源不会自动恢复。
 
 **修复**：
+
 1. 严格遵守生命周期：`deinit` 后才能再次 `init`
 2. 注册 Instance 前用 `imu_instance.instance_num` 检查是否已达上限（3 个）
 3. 如果确实需要替换实例，先调 `pf_deinit` 完整释放再重新初始化
@@ -606,6 +615,7 @@ mpu_drv.pf_deinit(&mpu_drv);  // 写 PWR_MGMT_1.SLEEP → 标记 NOT_INITED
 **根因**：从 SLEEP 模式唤醒后，MPU6050 内部 PLL 需要重新锁定。手册规定典型锁定时间为 60ms，源码在 `mpu6050_init` 中 `DEVICE_RESET` 后 wait 100ms。但 `mpu6050_wakeup` 只写了 `CLOCK_PLL_XGYRO` 位，没有加延时——调用者需要自行等待。
 
 **修复**：
+
 ```c
 mpu_drv.pf_wakeup(&mpu_drv);
 mpu_drv.p_ops_instance->p_timebase_instance->pf_delay_ms(100); // 等 PLL 锁
@@ -684,6 +694,7 @@ imu_handler_status_t bsp_imu_handler_set_data_callback(
 **现象**：日志打印 DMA 回调失败，错误码 `MPU6050_ERRORRESOURCE`。
 
 **根因**：源码 `mpu6050_dma_callback` 中有检查：
+
 ```c
 if (NULL == dma->dma_buffer->read_buffer ||
     NULL == dma->dma_buffer->write_buffer ||
@@ -691,9 +702,11 @@ if (NULL == dma->dma_buffer->read_buffer ||
     ret = MPU6050_ERRORRESOURCE;
 }
 ```
+
 `read_buffer == write_buffer` 意味着 Adapter 初始化 DMA 双缓冲时分配错误——两个指针指向了同一块内存。指针交换后不会有任何效果，且上层读到的永远是旧的 write_buffer 内容。
 
 **修复**：Adapter 在 `dma_interface_t` 初始化时分配两块独立的内存：
+
 ```c
 static uint32_t dma_buf_a[4]; // 14 字节 + 对齐
 static uint32_t dma_buf_b[4];
