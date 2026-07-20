@@ -307,11 +307,100 @@ Driver 所有方法（`pf_init`、`pf_get_data`、`pf_sleep` 等）在 `bsp_mpu6
 
 ## 关键公式/结论
 
-> 最终结论和公式。
+> 最终结论和公式。数据在 Driver 层只返回原始码值，单位换算在上层完成。
 
-1.
-2.
-3.
+### 原始数据 Burst Read 布局
+
+一次 I2C burst read 从 `ACCEL_XOUT_H`（0x3B）开始连读 14 字节，寄存器高字节在前：
+
+| 字节偏移 | 寄存器 | 对应字段 |
+|---------|--------|---------|
+| 0 ~ 1 | ACCEL_XOUT | `accel_x` |
+| 2 ~ 3 | ACCEL_YOUT | `accel_y` |
+| 4 ~ 5 | ACCEL_ZOUT | `accel_z` |
+| 6 ~ 7 | TEMP_OUT | `temperature` |
+| 8 ~ 9 | GYRO_XOUT | `gyro_x` |
+| 10 ~ 11 | GYRO_YOUT | `gyro_y` |
+| 12 ~ 13 | GYRO_ZOUT | `gyro_z` |
+
+拼接方式（源码 `mpu6050_get_data` 中实现）：
+```c
+accel_x = (int16_t)(((uint16_t)raw[0] << 8) | raw[1]);   // 大端组合
+```
+
+### 加速度计单位换算
+
+| FS_SEL | 量程 | 灵敏度 (LSB/g) | 换算公式 |
+|--------|------|---------------|---------|
+| 0 | ±2g | 16384 | `g = raw / 16384.0f` |
+| 1 | ±4g | 8192 | `g = raw / 8192.0f` |
+| 2 | ±8g | 4096 | `g = raw / 4096.0f` |
+| 3 | ±16g | 2048 | `g = raw / 2048.0f` |
+
+源码对应 `mpu6050_accel_fs_t` 枚举，位域位于 `ACCEL_CONFIG[4:3]`。
+
+### 陀螺仪单位换算
+
+| FS_SEL | 量程 | 灵敏度 (LSB/dps) | 换算公式 |
+|--------|------|-----------------|---------|
+| 0 | ±250°/s | 131 | `dps = raw / 131.0f` |
+| 1 | ±500°/s | 65.5 | `dps = raw / 65.5f` |
+| 2 | ±1000°/s | 32.8 | `dps = raw / 32.8f` |
+| 3 | ±2000°/s | 16.4 | `dps = raw / 16.4f` |
+
+源码对应 `mpu6050_gyro_fs_t` 枚举，位域位于 `GYRO_CONFIG[4:3]`。
+
+### 温度换算
+
+```
+T(°C) = TEMP_OUT / 340.0f + 36.53f
+```
+
+### 采样率计算
+
+```
+Sample Rate = Gyroscope Output Rate / (1 + SMPLRT_DIV)
+
+其中 Gyroscope Output Rate:
+- DLPF 使能时（DLPF_CFG ∈ [0,6]）: 8kHz
+- DLPF 禁用时（DLPF_CFG ∈ [7] 或 FCHOICE_B = 00）: 1kHz
+```
+
+源码默认 `SMPLRT_DIV = 7`、`DLPF_CFG = 3`，实际采样率 = 8kHz / (1+7) = **1kHz**。
+
+### DLPF 带宽参考
+
+| DLPF_CFG | 加速度计带宽 | 陀螺仪带宽 | 延迟 |
+|----------|------------|-----------|------|
+| 0 | 260 Hz | 256 Hz | 0.98 ms |
+| 1 | 184 Hz | 188 Hz | 1.9 ms |
+| 2 | 94 Hz | 98 Hz | 2.8 ms |
+| 3 | 44 Hz | 42 Hz | 4.8 ms |
+| 4 | 21 Hz | 20 Hz | 9.7 ms |
+| 5 | 10 Hz | 10 Hz | 18.8 ms |
+| 6 | 5 Hz | 5 Hz | 33.5 ms |
+
+源码默认取 3（44/42 Hz），平衡噪声抑制和响应速度。值 7 为保留值，不可使用（`mpu6050_set_config` 中做范围校验）。
+
+### DMA 双缓冲指针交换
+
+```
+完成前:  write_buf → Buf_A,  read_buf → Buf_B
+完成后:  write_buf → Buf_B,  read_buf → Buf_A  (交换)
+通知:    pf_dma_notify(read_buf) — 上层读到刚完成的帧
+```
+
+### 默认配置快照
+
+源码 `mpu6050_init` 中写入的默认值（对应 `mpu6050_config_t`）：
+
+| 参数 | 默认值 | 后果 |
+|------|--------|------|
+| `sample_rate_div = 7` | 1kHz 采样 | |
+| `dlpf_cfg = 3` | 44/42 Hz 带宽 | |
+| `accel_fs = 0` | ±2g | |
+| `gyro_fs = 0` | ±250°/s | |
+| `int_enable = DATA_RDY_EN` | 仅数据就绪中断 | |
 
 ## 实际操作步骤
 
@@ -448,13 +537,105 @@ mpu_drv.pf_deinit(&mpu_drv);  // 写 PWR_MGMT_1.SLEEP → 标记 NOT_INITED
 
 ## 常见问题
 
-> 现象 → 根因 → 修复。
+> 现象 → 根因 → 修复。均来自本项目的实际调试经历。
 
-### 发现的问题
+### 问题 1：`bsp_mpu6050_driver_inst` 返回 `MPU6050_ERRORTIMEOUT`
 
-### 根因分析
+**现象**：初始化函数调用返回错误，日志打印 `stage=hw_init, result=failed, step=config_or_id_check`。
 
-### 改进方法
+**根因**：硬件初始化成功后，`mpu6050_set_config` 写寄存器或 `mpu6050_read_id` 读 WHO_AM_I 失败。最常见原因是 I2C 总线不通——SDA/SCL 引脚映射错误、上拉电阻缺失（I2C 标准要求 4.7kΩ 上拉到 VCC）、或 MPU6050 未供电。
+
+**定位**：先在 `mpu6050_read_id` 入口加断点，看 `mpu6050_read_regs(self, 0x75, &id, 1)` 的返回值。如果返回 `MPU6050_ERRORTIMEOUT`，用逻辑分析仪抓 I2C 波形——SDA 被从机一直拉高不放 = 地址不对或芯片没响应。
+
+**修复**：
+1. 检查 `AD0` 引脚电平 → 决定地址是 0x68 还是 0x69
+2. 用万用表量 SDA/SCL 对 VCC 的电压 → 确保上拉电阻存在
+3. 在 `bsp_mpu6050_driver_inst` 之前确认 `HAL_I2C_IsDeviceReady(&hi2c1, 0x68<<1, 3, 100)` 返回 HAL_OK
+
+### 问题 2：DMA 回调一直不来，中断被吞
+
+**现象**：MPU6050 INT 引脚有波形（示波器可见 200Hz 方波），但 Handler 的 `pf_data_callback` 从未触发。
+
+**根因**：两类可能——
+
+- **EXTI 未正确使能**：MCU 外部中断线未配置或被更高优先级中断抢占。检查 NVIC 优先级配置——MPU6050 EXTI 的抢占优先级不能低于正在阻塞它的中断。
+- **DMA 启动失败后 EXTI 未恢复**：源码 `mpu6050_irq_callback` 中，如果 `INT_STATUS` 检查不通过或 `dma_init` 失败，会走 `callback_restore_irq` 分支恢复 EXTI。但如果 `pf_mask_data_ready_irq` 本身成功而后续 `pf_unmask_data_ready_irq` 失败，EXTI 永远关闭。
+
+**定位**：利用源码中预留的 trace 接口：
+```c
+// 逻辑分析仪抓 TRACE_Pin：
+//   level=1 → 进入 irq_callback
+//   level=0 → 退出
+```
+如果 TRACE_Pin 拉高后一直不拉低 = `irq_callback` 内某处死等或未走完正常退出路径。同时用 `DEBUG_MPU6050_OUT` 打开日志看 `stage=irq, result=ignored` 的打印频率。
+
+**修复**：
+1. 确认 `NVIC_SetPriority(EXTIx_IRQn, 5)` 优先级合理（数字越小越高，0 为最高）
+2. 检查 `mpu6050_irq_callback` 的 `callback_restore_irq` 标签处是否确实调了 `pf_unmask_data_ready_irq`
+3. 如果 INT_STATUS 经常不匹配（日志频繁打印 `int_status=0x00`），检查 INT 引脚配置——可能配置为电平触发而非边沿触发导致重复进中断
+
+### 问题 3：读取线程解码失败，`latest_status` 持续为错误值
+
+**现象**：DMA 帧正常投递到队列，但 `latest_data` 始终为零，`latest_status` 为非 OK 值。
+
+**根因**：解码路径 `imu_handler_process_dma_frame` 的失败点：
+- `pf_decode_frame` 返回错误 → Adapter 的解码实现有问题（字节序错误、帧格式不对）
+- `pf_get_time_ms` 返回错误 → 时基接口未正确注入
+- `lifetime` 机制让数据在 `IMU_HANDLER_DMA_LIFETIME_MS`（默认 50ms）内被跳过 → `IMU_HANDLER_OK` 返回但未解码
+
+**修复**：
+1. 检查 Adapter 的 `pf_decode_frame` 实现——确认 14 字节布局和字节序与大端一致
+2. 在 `imu_handler_process_dma_frame` 的 `pf_decode_frame` 调用前后加断点，对比原始 `signal->frame` 和解码后的 `data`
+3. 如果只是 lifetime 限频太激进，调小 `IMU_HANDLER_DMA_LIFETIME_MS`（项目默认为 50ms = 20Hz 等效刷新率）
+
+### 问题 4：重复初始化或重复注册导致资源泄漏
+
+**现象**：正常运行一段时间后 `pf_instance_register` 返回 `IMU_HANDLER_ERRORRESOURCE`。
+
+**根因**：源码在所有入口都有状态检查——`bsp_mpu6050_driver_inst` 拒绝 `is_inited == INITED` 的实例，`imu_handler_instance_register` 拒绝重复的 instance 指针和超出 `IMU_NUM_MAX` 的场景。如果上层代码在未调 `pf_deinit` 的情况下再次调 `pf_init`，会被拦截但资源不会自动恢复。
+
+**修复**：
+1. 严格遵守生命周期：`deinit` 后才能再次 `init`
+2. 注册 Instance 前用 `imu_instance.instance_num` 检查是否已达上限（3 个）
+3. 如果确实需要替换实例，先调 `pf_deinit` 完整释放再重新初始化
+
+### 问题 5：唤醒后立即读取数据全为零或漂移严重
+
+**现象**：调 `pf_wakeup` 后立刻读数据，读数不正常。
+
+**根因**：从 SLEEP 模式唤醒后，MPU6050 内部 PLL 需要重新锁定。手册规定典型锁定时间为 60ms，源码在 `mpu6050_init` 中 `DEVICE_RESET` 后 wait 100ms。但 `mpu6050_wakeup` 只写了 `CLOCK_PLL_XGYRO` 位，没有加延时——调用者需要自行等待。
+
+**修复**：
+```c
+mpu_drv.pf_wakeup(&mpu_drv);
+mpu_drv.p_ops_instance->p_timebase_instance->pf_delay_ms(100); // 等 PLL 锁
+// 此后才能正常读数据
+```
+
+### 问题 6：DMA 双缓冲区指针相等导致 `dma_callback` 返回 `ERRORRESOURCE`
+
+**现象**：日志打印 DMA 回调失败，错误码 `MPU6050_ERRORRESOURCE`。
+
+**根因**：源码 `mpu6050_dma_callback` 中有检查：
+```c
+if (NULL == dma->dma_buffer->read_buffer ||
+    NULL == dma->dma_buffer->write_buffer ||
+    dma->dma_buffer->read_buffer == dma->dma_buffer->write_buffer) {
+    ret = MPU6050_ERRORRESOURCE;
+}
+```
+`read_buffer == write_buffer` 意味着 Adapter 初始化 DMA 双缓冲时分配错误——两个指针指向了同一块内存。指针交换后不会有任何效果，且上层读到的永远是旧的 write_buffer 内容。
+
+**修复**：Adapter 在 `dma_interface_t` 初始化时分配两块独立的内存：
+```c
+static uint32_t dma_buf_a[4]; // 14 字节 + 对齐
+static uint32_t dma_buf_b[4];
+dma_buffer_t buf = {
+    .size = MPU6050_SENSOR_DATA_LENGTH,
+    .read_buffer  = dma_buf_a,
+    .write_buffer = dma_buf_b,  // 必须 ≠ read_buffer
+};
+```
 
 ---
 
