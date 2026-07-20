@@ -147,6 +147,7 @@ sequenceDiagram
 ```
 
 **ISR 中必须遵守的 FreeRTOS 规则：**
+
 - 只能调带 `FromISR` 后缀的 API（如 `xQueueSendFromISR`、`xSemaphoreGiveFromISR`）
 - 不能阻塞（禁止 `portMAX_DELAY`）
 - 退出前检查 `portYIELD_FROM_ISR()` 决定是否立即切换任务
@@ -216,6 +217,7 @@ graph TB
 ```
 
 **安全保证：**
+
 - 指针交换发生在 EXTI 关闭期间（`dma_callback` 末尾才恢复 EXTI），与新数据中断天然互斥
 - 源码三重检查（[driver.c:187-189](BSP/MPU6050/driver/Src/bsp_mpu6050_driver.c#L187)）：读指针非空 + 写指针非空 + 两者不相等 → 防止 Adapter 分配错误导致双缓冲退化为单缓冲
 
@@ -304,7 +306,7 @@ if (NULL == self || NULL == config || MPU6050_INITED != self->is_inited ||
 
 为什么不用 `switch` 去匹配合法值、而是用 `> MAX` 判断？因为枚举值本身就是连续整数（0/1/2/3），`> MAX` 比 `switch` 更简洁且自动覆盖所有未来非法值，不会因新增枚举漏加 case。
 
-**校验通过后才逐项写寄存器**——且任一步 I2C 写入失败立即停止后续写入，返回错误状态码。这样不会出现 "SMPLRT_DIV 已改但 ACCEL_CONFIG 还是旧值" 的半套配置。
+**校验通过后才逐项写寄存器**——且任一步 I2C 写入失败立即停止后续写入，返回错误状态码。这样不会出现 "SMPLRT_DIV 已改但 ACCEL_CONFIG 还是旧值 " 的半套配置。
 
 ## 关键公式/结论
 
@@ -415,7 +417,7 @@ ISR 内读 `INT_STATUS`(0x3A) 二次确认中断源：是 DATA_RDY → 启动 DM
 | 中断频率 | 高 | 低（多帧一次搬运） |
 | 适用场景 | 单次轮询 | DMA 连续高频采集 |
 
-### 默认配置"组合拳"
+### 默认配置 " 组合拳 "
 
 | 参数 | 默认值 | 在链上的角色 | 为什么是这个值 |
 |------|--------|------------|--------------|
@@ -586,6 +588,7 @@ mpu6050_status_t ret = bsp_mpu6050_driver_inst(&mpu_drv, &ops);
 **根因**：未按数据手册初始化序列发送测量命令就直接读 ID。`mpu6050_init` 必须先 DEVICE_RESET → 等 100ms（PLL 锁）→ 选 PLL 时钟 → 配 PWR_MGMT_2 → 再校验 WHO_AM_I。跳过任一步，芯片处于未知状态，读回的 ID 与 `MPU6050_WHO_AM_I_VALUE`（0x68 & 0x7E）不匹配。
 
 **定位**：
+
 1. 在 `mpu6050_read_id` 入口加断点看 I2C 返回值——返回 OK 但 ID 不匹配 = 芯片状态不对；返回 TIMEOUT = I2C 总线不通
 2. 用逻辑分析仪抓 I2C 波形——看 SDA 是否被从机拉低（ACK）
 
@@ -600,6 +603,7 @@ mpu6050_status_t ret = bsp_mpu6050_driver_inst(&mpu_drv, &ops);
 **定位**：利用 Driver 的 trace 接口（`trace_interface_t`）接逻辑分析仪观察 ISR 进出频率和时长。
 
 **修复**：
+
 1. 换 FIFO 模式：数据积攒在 FIFO，DMA 低频批量搬运，减少中断次数
 2. Handler 层设置 lifetime 限频（默认 50ms=20Hz），跳过不必要的解码和回调
 3. 评估实际需求——姿态解算通常 100~200Hz 够用，不需要 8kHz 全速
@@ -611,6 +615,7 @@ mpu6050_status_t ret = bsp_mpu6050_driver_inst(&mpu_drv, &ops);
 > 自问自答，检验理解深度。按难度递进排列。
 
 ## 🟢 基础
+
 > 最基本的概念和用法，入门必知。
 
 ### Q1: `mpu6050_data_select_t` 按位掩码控制读取——为什么不能分三次 I2C 分别读 ACCEL / TEMP / GYRO？
@@ -619,9 +624,10 @@ A1: MPU6050 内部只有一个 ADC，同一时刻采样所有传感器。一次 
 
 ### Q2: `mpu6050_delay_ms` 在时基未注入时静默跳过——这带来什么隐患？怎么改进？
 
-A2: `mpu6050_delay_ms` 不用于 I2C 通信时序，但在 `mpu6050_init` 中负责 DEVICE_RESET 后等 100ms（PLL 锁）。时基缺失时静默跳过导致 PLL 未锁定就写后续寄存器，芯片行为不可预期。改进方向：要么函数加返回值让调用者感知，要么在 `bsp_mpu6050_driver_inst` 入口强制校验 `pf_delay_ms` 非空——初始化阶段不该允许"可选"。
+A2: `mpu6050_delay_ms` 不用于 I2C 通信时序，但在 `mpu6050_init` 中负责 DEVICE_RESET 后等 100ms（PLL 锁）。时基缺失时静默跳过导致 PLL 未锁定就写后续寄存器，芯片行为不可预期。改进方向：要么函数加返回值让调用者感知，要么在 `bsp_mpu6050_driver_inst` 入口强制校验 `pf_delay_ms` 非空——初始化阶段不该允许 " 可选 "。
 
 ## 🟡 进阶
+
 > 容易踩的坑和常见误区。
 
 ### Q3: 为什么 ISR 里不能做解码、计算时间和打日志？
@@ -633,20 +639,23 @@ A3: ISR 执行期间，Cortex-M NVIC 阻塞同级和更低优先级的所有中�
 A4: 不能。DLPF_CFG=0 → 带宽 256Hz → Nyquist 要求采样率 > 512Hz。SMPLRT_DIV=7 输出 125Hz 远低于 Nyquist，严重欠采样导致高频信号混叠。DIV 必须降至 0（1kHz 输出）才能满足。至于 GYRO_FS=±250dps 能否保持，取决于应用环境——256Hz 带宽放行了更多高频振动，安静环境可以，振动环境需评估量程是否够。
 
 ## 🔴 困难
+
 > 结合实战的深层原理和设计权衡。
 
 ### Q5: `mpu6050_irq_callback` 中为什么有三个 goto 标签？各处理什么情况？
 
 A5: 三个标签对应不同的错误恢复级别：
+
 - `callback_exit`：正常退出——DMA 启动成功，EXTI 保持关闭（等 dma_callback 才恢复）
 - `callback_restore_irq`：DMA 启动前失败——INT_STATUS 读错或非 DATA_RDY → 必须恢复 EXTI，否则驱动永久丢中断
 - 如果 `pf_mask_data_ready_irq` 本身失败，直接 `callback_exit`（不开 EXTI 是正确的——说明中断系统异常，强行恢复更危险）
 
 关键设计意图：**任何失败路径都必须恢复 EXTI**，但 DMA 启动成功则不恢复——指针交换和帧发布完成后再由 `dma_callback` 恢复。
 
-### Q6: DLPF_CFG=3、SMPLRT_DIV=7、GYRO_FS=±250dps 这三个默认值为什么是一个"组合拳"？
+### Q6: DLPF_CFG=3、SMPLRT_DIV=7、GYRO_FS=±250dps 这三个默认值为什么是一个 " 组合拳 "？
 
 A6: 三者是带宽→采样率→量程的链式约束：
+
 - `DLPF_CFG=3` → 加速度 44Hz / 陀螺仪 42Hz 低通截止，滤除机械振动噪声
 - `SMPLRT_DIV=7` → 125Hz 输出率，满足奈奎斯特定理（125 > 2×42 = 84），不混叠
 - `GYRO_FS=±250dps` → 最高分辨率（131 LSB/dps），42Hz 带宽内角速度不可能超过 ±250°/s——高频高幅振动已被 DLPF 滤除，无需大量程
