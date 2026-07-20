@@ -612,6 +612,73 @@ mpu_drv.p_ops_instance->p_timebase_instance->pf_delay_ms(100); // 等 PLL 锁
 // 此后才能正常读数据
 ```
 
+### 问题 7：关键共享数据缺少临界区保护 ← 当前架构待修复项
+
+**现象**：运行时偶尔出现 `pf_data_callback` 空指针访问，或回调上下文 `context` 与回调函数不匹配。
+
+**根因**：Handler 定义了临界区接口 `imu_handler_os_critical_t`（`pf_os_critical_enter` / `pf_os_critical_exit`），也创建了二值信号量（初始计数 1），但在当前代码中**两者均未被实际调用**。
+
+存在两处并发风险：
+
+| 共享资源 | 写者 | 读者 | 风险 |
+|---------|------|------|------|
+| `pf_data_callback` | `bsp_imu_handler_set_data_callback`（任意任务） | 读取线程 `imu_handler_process_dma_frame` | 读取线程拿到新回调 + 旧 context，回调被错误参数调用 |
+| `latest_data` / `latest_status` | 读取线程 | `pf_data_callback` 内可能转发到其他任务 | 依赖回调实现是否正确，无系统级保证 |
+
+```mermaid
+sequenceDiagram
+    participant TASK as 应用任务
+    participant THD as 读取线程
+
+    Note over TASK,THD: 竞态窗口：回调更新 vs 回调调用
+
+    THD->>THD: if (NULL != pf_data_callback)  ← 检查通过
+    TASK->>TASK: pf_data_callback = NULL      ← 应用清空回调
+    TASK->>TASK: context = NULL
+    THD->>THD: pf_data_callback(latest_data, context)
+    Note over THD: 此时 pf_data_callback = NULL<br/>但检查已过，空指针崩溃！
+```
+
+**修复**：
+
+利用已经定义好但未使用的 `p_os_critical` 接口：
+
+```c
+// === bsp_imu_handler_set_data_callback — 加临界区 ===
+imu_handler_status_t bsp_imu_handler_set_data_callback(
+    bsp_imu_handler_t *const self, imu_handler_data_callback_t callback,
+    void *const context) {
+  if (NULL == self) return IMU_HANDLER_ERRORPARAMETER;
+  if (IMU_INITED != self->is_inited) return IMU_HANDLER_ERRORRESOURCE;
+
+  // ★ 加锁
+  if (NULL != self->p_imu_os && NULL != self->p_imu_os->p_os_critical &&
+      NULL != self->p_imu_os->p_os_critical->pf_os_critical_enter) {
+    self->p_imu_os->p_os_critical->pf_os_critical_enter();
+  }
+
+  self->pf_data_callback = callback;
+  self->p_data_callback_context = (NULL != callback) ? context : NULL;
+
+  // ★ 解锁
+  if (NULL != self->p_imu_os && NULL != self->p_imu_os->p_os_critical &&
+      NULL != self->p_imu_os->p_os_critical->pf_os_critical_exit) {
+    self->p_imu_os->p_os_critical->pf_os_critical_exit();
+  }
+  return IMU_HANDLER_OK;
+}
+
+// === imu_handler_process_dma_frame — 读端同样加临界区 ===
+// 在读取 pf_data_callback 指针前加锁，调用完成后解锁：
+//   enter_critical();
+//   imu_handler_data_callback_t cb = self->pf_data_callback;
+//   void *ctx = self->p_data_callback_context;
+//   exit_critical();
+//   if (NULL != cb) { cb(&self->latest_data, ctx); }
+```
+
+> 当前代码中**其他路径已隐式安全**：DMA 双缓冲交换在 EXTI 关闭期间完成（天然互斥）；消息队列单消费者串行处理（无并发写 `latest_data`）。只有回调配置这条路径缺少保护。
+
 ### 问题 6：DMA 双缓冲区指针相等导致 `dma_callback` 返回 `ERRORRESOURCE`
 
 **现象**：日志打印 DMA 回调失败，错误码 `MPU6050_ERRORRESOURCE`。
