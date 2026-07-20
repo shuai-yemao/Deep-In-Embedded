@@ -2,7 +2,7 @@
 
 > 这篇笔记要讲什么？用一句话概括核心主题。
 
-Handler 位于 Driver 之上，通过消息队列统一管理 IMU 实例的注册、ISR→任务上下文的异步桥接、lifetime 限频与数据回调，将 "IMU 数据从哪来、什么时候处理、处理完交给谁" 的调度逻辑从芯片驱动中彻底剥离。
+Handler 位于 Driver 之上，通过消息队列统一管理 IMU 实例的注册、ISR→任务上下文的异步桥接、lifetime 限频与数据回调，将 "IMU 数据从哪来、什么时候处理、处理完交给谁 " 的调度逻辑从芯片驱动中彻底剥离。
 
 ---
 
@@ -19,6 +19,7 @@ Handler 位于 Driver 之上，承接 OS 层接口，通过消息队列统一管
 如果只有 Driver 而没有 Handler，应用层需要自己写读取线程、管理队列、处理 ISR→任务的数据桥接、对每个 IMU 实例做 lifetime 限频——每个应用都重复一套。更致命的是：MPU6050 数据就绪可达 8kHz，应用层直接接 Driver 的 DMA 通知将导致回调被每秒调用 8000 次，CPU 被完全占满，其他任务饿死。
 
 Handler 解决了五个具体问题：
+
 1. **中断上下半部分离**：ISR 只复制帧到队列，解码/限频/回调推迟到读取线程
 2. **消息来源统一调度**：DMA ISR 的高频推送和应用任务的低频查询在同一条线程串行处理，无锁设计
 3. **多实例管理**：最多 3 个 IMU 独立维护操作表、lifetime 时间戳，`instance_index` 贯穿整条数据链路
@@ -149,6 +150,7 @@ while (IMU_INITED == self->is_inited) {
 **当前退出机制的隐患：** `imu_handler_deinit` 先调 `pf_os_thread_delete` 强杀线程（等价于 `vTaskDelete`），**然后才设** `is_inited = NOT_INITED`。线程可能正在 `pf_data_callback` 回调中被强杀——如果回调持有了互斥锁，锁永远不释放，等待该锁的所有任务永久阻塞（死锁）。
 
 **改进方案（三段式退出）：**
+
 1. 设 `is_inited = NOT_INITED` — 阻止新消息投递
 2. 用 `pf_os_task_notify_give` 投递退出信号 — 唤醒阻塞在 `WAIT_FOREVER` 的线程
 3. 线程收到信号后自然 `break` → `return`
@@ -446,6 +448,7 @@ mpu_drv.pf_deinit(&mpu_drv);  // SLEEP→NOT_INITED
 > 自问自答，检验理解深度。按难度递进排列。
 
 ## 🟢 基础
+
 > 最基本的概念和用法，入门必知。
 
 ### Q1: Handler 的消息队列为什么使用一个 struct 内嵌 union，融合两种消息类型？
@@ -457,6 +460,7 @@ A1: 使用 union 让 `read_event` 和 `dma_frame` 共享同一块内存，读取
 A2: `0xFFFFFFFF` 作为 `IMU_HANDLER_DMA_TIMESTAMP_INVALID` 标记首次帧放行。lifetime 限频需要在首次帧被处理后拿到第一个时间基准（`last_time`），后续帧才能计算 `elapsed = current - last`。如果首帧也要做 `elapsed < 50ms` 检查——`0xFFFFFFFF` 的差值远超 50ms，逻辑上不可行。首次帧永远被处理是必然设计。
 
 ## 🟡 进阶
+
 > 容易踩的坑和常见误区。
 
 ### Q3: 读取线程的退出条件 `while (IMU_INITED == self->is_inited)` 为什么实际不会被触发？
@@ -468,6 +472,7 @@ A3: 因为 `imu_handler_deinit` 的执行顺序是**先调 `pf_os_thread_delete`
 A4: 改进为三段式退出：①设 `is_inited = NOT_INITED` 阻止新消息投递 → ②用 `p_os_task_notify_give` 投递退出信号唤醒阻塞在 `WAIT_FOREVER` 的线程 → ③线程收到信号后自然 `break`→`return` → ④等线程函数 return 后**再**删线程句柄 → ⑤删队列 → ⑥删信号量。Handler 已定义的 `imu_handler_os_task_notify_t` 接口正是为此预留，但当前未在退出流程中使用。
 
 ## 🔴 困难
+
 > 结合实战的深层原理和设计权衡。
 
 ### Q5: `pf_data_callback` 回调为什么在临界区**外面**调用？

@@ -226,7 +226,7 @@ graph TB
 `is_inited` 状态标志贯穿所有公开 API 入口，防御三类问题：
 
 1. **未初始化调用**：每个 API 首行检查 `is_inited != INITED` → 拒绝
-2. **重复初始化**：`bsp_mpu6050_driver_inst()` 检查 `== INITED` → 拒绝
+2. **重复初始化**：`bsp_mpu6050_driver_inst()` 检查 ` INITED` → 拒绝
 3. **去初始化后被使用**：`mpu6050_deinst` 将 11 个函数指针全部置 NULL，即使上层犯错也不会顺着空指针跳 HardFault
 
 ```c
