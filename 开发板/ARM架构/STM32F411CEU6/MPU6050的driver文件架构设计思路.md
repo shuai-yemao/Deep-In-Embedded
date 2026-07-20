@@ -242,6 +242,26 @@ static mpu6050_status_t mpu6050_deinst(bsp_mpu6050_driver_t *self) {
 }
 ```
 
+> **⚠️ 隐蔽陷阱：`mpu6050_delay_ms` 的静默降级**
+
+```c
+// driver.c:98-105 — 时基未注入时静默跳过，不阻塞驱动
+static void mpu6050_delay_ms(bsp_mpu6050_driver_t *self, uint32_t ms) {
+    if (NULL != self && NULL != self->p_ops_instance &&
+        NULL != self->p_ops_instance->p_timebase_instance &&
+        NULL != self->p_ops_instance->p_timebase_instance->pf_delay_ms) {
+        self->p_ops_instance->p_timebase_instance->pf_delay_ms(ms);
+    }
+    // 时基未注入 → 静默跳过，不报错、不阻塞
+}
+```
+
+这个设计的本意是**可选资源降级**——时基是可选的，没有时基就跳过去，不阻塞其他初始化步骤。但这也埋了一个隐蔽陷阱：
+
+`mpu6050_init` 里 `DEVICE_RESET` 后调了 `mpu6050_delay_ms(self, 100U)`——如果 Adapter 初始化时**忘了给 `p_timebase_instance` 赋值**，这个 100ms 等待会被静默跳过。后果是：PWR_MGMT_2 和后续寄存器在 PLL 未锁定时就被写入，芯片行为不可预期。`mpu6050_init` 不会报错（delay 本身不返回状态码），直到最后的 `mpu6050_read_id` 才可能失败——而根因（时基缺失）被 100ms 延时的静默跳过完全掩盖。
+
+**教训**：可选资源降级虽然灵活，但关键路径（如初始化等待 PLL 锁）依赖它时必须在上层做强制检查——Adapter 注入后验证 `p_timebase_instance` 和 `pf_delay_ms` 非空。
+
 ### 6. 编译期数据源选择与按位读取掩码
 
 ```mermaid
@@ -320,6 +340,23 @@ DEVICE_RESET(0x6B 写 0x80) → 等 100ms（PLL 锁）
 ```
 
 DLPF 使能时陀螺仪输出速率固定 1kHz（内部 ADC 在 8kHz 采样，经 DLPF 降采样至 1kHz 输出）。
+
+### DLPF 带宽与延迟参考
+
+| DLPF_CFG | 加速度计带宽 | 陀螺仪带宽 | 延迟 (ms) | 适用场景 |
+|----------|------------|-----------|----------|---------|
+| 0 | 260 Hz | 256 Hz | 0.98 | 振动分析（高频） |
+| 1 | 184 Hz | 188 Hz | 1.9 | 快速姿态解算 |
+| 2 | 94 Hz | 98 Hz | 2.8 | 中等动态 |
+| **3** | **44 Hz** | **42 Hz** | **4.8** | **姿态解算（默认）** |
+| 4 | 21 Hz | 20 Hz | 9.7 | 慢速变化检测 |
+| 5 | 10 Hz | 10 Hz | 18.8 | 准静态测量 |
+| 6 | 5 Hz | 5 Hz | 33.5 | 极低噪声 |
+| 7 | — | — | — | 保留值，不可用 |
+
+数据来源：RM-MPU-6000A-00 Rev 4.2。**值 7 为保留值不可用**——`mpu6050_set_config` 中检查 `dlpf_cfg > 6` 正是拦截此值。
+
+实测权衡：dlpf 越低带宽越大延迟越小，但噪声越多；dlpf 越高噪声越少但延迟越大。默认选 3 是在噪声抑制和响应速度之间的折中。
 
 ### 量程与灵敏度
 
