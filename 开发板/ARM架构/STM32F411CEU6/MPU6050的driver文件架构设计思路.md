@@ -613,18 +613,13 @@ mpu6050_status_t ret = bsp_mpu6050_driver_inst(&mpu_drv, &ops);
 ## 🟢 基础
 > 最基本的概念和用法，入门必知。
 
-### Q1: `bsp_mpu6050_driver` 的核心职责是什么？
+### Q1: `mpu6050_data_select_t` 按位掩码控制读取——为什么不能分三次 I2C 分别读 ACCEL / TEMP / GYRO？
 
-A1: 将 MPU6050 的寄存器操作封装为可靠的函数调用，通过接口注入与具体芯片平台和 OS 解耦，让上层不关心 I2C 时序、寄存器地址和位域拼接。驱动层返回原始码值，单位换算在上层完成。
+A1: MPU6050 内部只有一个 ADC，同一时刻采样所有传感器。一次 I2C burst read 连续读 14 字节从 `ACCEL_XOUT_H`（0x3B）开始，保证三轴加速度 + 温度 + 三轴陀螺仪全部来自同一次 ADC 采样，数据在时间上一致。掩码只控制读完后填充哪些字段到 `mpu6050_data_t`——不减少 I2C 读取量（永远 14 字节）。
 
-### Q2: `mpu6050_ops_t` 聚合了哪些接口表？各解决什么依赖？
+### Q2: `mpu6050_delay_ms` 在时基未注入时静默跳过——这带来什么隐患？怎么改进？
 
-A2: 五个——
-- `iic_driver_interface_t`（9 个函数指针）：I2C 通信——HAL 硬件 I2C 或 GPIO 软件模拟
-- `timebase_interface_t`（3 个函数指针）：时基——HAL_Delay 或 vTaskDelay
-- `irq_interface_t`（2 个函数指针）：中断屏蔽/恢复——不同芯片 NVIC API 不同
-- `dma_interface_t`（2 个函数 + 双缓冲指针）：DMA 传输——高度芯片相关
-- `trace_interface_t`（1 个函数）：可选 GPIO trace，逻辑分析仪观测
+A2: `mpu6050_delay_ms` 不用于 I2C 通信时序，但在 `mpu6050_init` 中负责 DEVICE_RESET 后等 100ms（PLL 锁）。时基缺失时静默跳过导致 PLL 未锁定就写后续寄存器，芯片行为不可预期。改进方向：要么函数加返回值让调用者感知，要么在 `bsp_mpu6050_driver_inst` 入口强制校验 `pf_delay_ms` 非空——初始化阶段不该允许"可选"。
 
 ## 🟡 进阶
 > 容易踩的坑和常见误区。
@@ -633,9 +628,9 @@ A2: 五个——
 
 A3: ISR 执行期间，Cortex-M NVIC 阻塞同级和更低优先级的所有中断。如果 ISR 里做耗时操作——解码 14 字节数据、读时间戳、格式化日志——SysTick（通常配置为最低优先级）会被阻塞，FreeRTOS 时基偏移，系统实时性崩溃。FreeRTOS 要求 ISR 中只能调带 `FromISR` 后缀的 API、不能阻塞。耗时处理通过队列/信号量投递到任务上下文完成。
 
-### Q4: FIFO 模式和 REGISTERS 模式在 DMA 连续采集场景下的根本区别是什么？
+### Q4: DLPF_CFG 从 3（42Hz）改成 0（256Hz）后，SMPLRT_DIV=7 还能保持不变吗？
 
-A4: REGISTERS 模式下，每次数据就绪都必须立即 DMA 搬运 14 字节——因为寄存器在下个采样周期会被覆盖。DMA 搬运频率等于采样率（125Hz），中断频率高。FIFO 模式下，数据先积攒在 1024 字节 FIFO（≈73 帧容量），DMA 可以低频批量搬运多帧，减少 DMA 中断次数和 I2C 事务开销。
+A4: 不能。DLPF_CFG=0 → 带宽 256Hz → Nyquist 要求采样率 > 512Hz。SMPLRT_DIV=7 输出 125Hz 远低于 Nyquist，严重欠采样导致高频信号混叠。DIV 必须降至 0（1kHz 输出）才能满足。至于 GYRO_FS=±250dps 能否保持，取决于应用环境——256Hz 带宽放行了更多高频振动，安静环境可以，振动环境需评估量程是否够。
 
 ## 🔴 困难
 > 结合实战的深层原理和设计权衡。
