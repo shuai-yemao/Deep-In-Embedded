@@ -423,3 +423,4 @@ A5：
 - `System/Adapter/Src/system_adapter.c` — 将 IIC、时间基准、RTOS 和中断接口绑定到 driver 的工程适配。
 - `Middlewares/Third_Party/Unity/` — Unity 测试框架源码，用于驱动接口和协议逻辑测试。
 - [[AHT21的handler文件架构设计思路]] — driver 上层 handler 的数据组织和业务调用关系。
+- [[AHT21的单元测试文件架构设计思路]] — Driver 和 Handler 的 Mock 注入单元测试设计与覆盖分析。
