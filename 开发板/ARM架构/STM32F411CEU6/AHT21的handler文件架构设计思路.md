@@ -179,6 +179,50 @@ flowchart TD
 
 Adapter 还负责把 `osStatus_t` 映射为 `TEMP_HUMI_*` 状态码，避免 handler 直接依赖 CMSIS-RTOS 的错误枚举。
 
+### lifetime 分类型限频机制
+
+`bsp_read_temp_humi()` 使用静态数组 `last_read_time[3]` 而非单一全局时间戳：
+
+```c
+static uint32_t last_read_time[3] = {0};
+// [0]: READ_TEMP    温度独立计时
+// [1]: READ_HUMI    湿度独立计时
+// [2]: READ_TEMP_HUMI 温湿度组合独立计时
+```
+
+三种读取类型各自有独立的 `lifetime`，互不干扰。例如：温度 lifetime=500ms、湿度 lifetime=2000ms——读温度不会重置湿度的限频计时器。
+
+`lifetime = 0` 的语义是"无限频限制"（`elapsed_time < 0` 永远为 false），每次调用都直通传感器。但高频读取会导致 I2C 总线被占满和传感器过热，实际项目中应设置合理的最小间隔。
+
+### 初始化的资源回滚
+
+`bsp_temp_humi_init()` 按顺序创建队列和线程，**创建失败必须逆序回滚**：
+
+```mermaid
+flowchart TD
+    A[清空实例组] --> B[创建消息队列]
+    B -->|成功| C[创建处理线程]
+    B -->|失败| ERR[返回错误]
+    C -->|成功| D[返回 TEMP_HUMI_OK]
+    C -->|失败| E[删除已创建的队列]
+    E --> F[queue_handler = NULL]
+    F --> ERR2[返回错误]
+```
+
+线程创建失败时不删除队列 → 队列句柄泄漏。去初始化 `bsp_temp_humi_deinit()` 按相反顺序释放：先删线程 → 再删队列 → 再清实例组 → 最后清标志位。
+
+### 反实例化 `bsp_temp_humi_deinst()` 的清零流程
+
+与 driver 层 `pf_deinst()` 设计一致，handler 反实例化由外向内逐层清零：
+
+1. 检查 handler 不能处于 `TEMP_HUMI_INITED` 状态（必须先调 pf_deinit）
+2. 临界区内：清空 `instance_group` 数组、`instance_num = 0`
+3. 退出临界区：置空 `p_temp_humi_os`、`queue_handler`、`thread_handler`
+4. 置空所有函数指针（pf_deinst/pf_init/pf_deinit/pf_instance_register）
+5. `is_inited = TEMP_HUMI_NOT_INITED`
+
+**设计意图**：`pf_deinit()` 负责释放 OS 资源（线程/队列），`pf_deinst()` 负责解绑指针和函数映射。两者不能混淆——必须先释放 OS 资源才能安全解绑指针。
+
 ## 关键公式/结论
 
 > 最终结论和公式。
@@ -271,17 +315,34 @@ A 2：
 
 > 容易踩的坑和常见误区。
 
-### Q 3
+### Q3：Handler 通过 `void *instance + sensor_ops` 调用传感器。如果换成 SHT30 芯片，Handler 代码需要改什么？
 
-A 3：
+A3：
+
+Handler 代码**零改动**。它只依赖 `temp_humi_handler_sensor_ops_t` 抽象接口和 `void *instance` 通用指针，不包含任何 AHT21 专用命令或数据解析。新增 SHT30 只需：
+1. 为 SHT30 实现一套 `temp_humi_handler_sensor_ops_t` 包装函数（pf_init/pf_read_temp/pf_read_humidity/pf_deinit/pf_detect）
+2. 在 Adapter 层调用 `handler.pf_instance_register(&handler, &sht30_driver, &sht30_sensor_ops)` 注册即可
+
+这就是函数指针表 + void* 泛型在多传感器管理中的核心价值——通过统一接口实现对具体驱动的解耦。
 
 ## 🔴 困难
 
 > 结合实战的深层原理和设计权衡。
 
-### Q 4
+### Q4：Handler 有临界区（`pf_os_critical_enter/exit`），Driver 有互斥锁（`pf_lock/unlock`）。为什么不合并成一个锁？两层保护的职责边界在哪？
 
-A 4：
+A4：
+
+两层锁不可合并，因为**保护对象和时间尺度完全不同**：
+
+| 维度 | Handler 临界区 | Driver 互斥锁 |
+|------|---------------|--------------|
+| **保护对象** | 软件数据结构（`instance_group` 数组、`instance_num`） | 硬件资源（I2C 总线、AHT21 传感器） |
+| **持锁时长** | 微秒级（数组操作） | 可能 80ms+（等测量完成） |
+| **并发场景** | 注册传感器 vs 遍历读取 | 多线程同时发起 I2C 通信 |
+| **失败后果** | 实例数不一致、野指针 | I2C 总线冲突、数据损坏 |
+
+如果合并：在 handler 遍历实例组时持锁等待 80ms 测量 → 注册传感器被阻塞 → 整个 handler 不可用。分层锁让 handler 的"管理"动作（微秒级）和 driver 的"通信"动作（毫秒级）互不干扰。
 
 ---
 
