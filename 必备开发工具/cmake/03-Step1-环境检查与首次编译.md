@@ -32,7 +32,7 @@ cmake --version                # ✅ 4.3.2
 
 **问题 2：GateGuard 反复拦截文件写入操作**
 
-- 需要先陈述"事实清单"再重试
+- 需要先陈述 " 事实清单 " 再重试
 
 ### 3. CMake 配置
 
@@ -41,6 +41,7 @@ cmake --preset Debug
 ```
 
 输出：
+
 ```
 Build type: Debug
 -- Configuring done (0.1s)

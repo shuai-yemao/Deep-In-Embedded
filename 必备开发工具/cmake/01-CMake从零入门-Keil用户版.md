@@ -11,16 +11,16 @@ tags:
 
 ## 一、CMake 到底是什么？
 
-**一句话：CMake 是一个"生成编译配置的工具"，不是编译器，也不是 IDE。**
+**一句话：CMake 是一个 " 生成编译配置的工具 "，不是编译器，也不是 IDE。**
 
 你在 Keil 里做这些事情：
 
-- 右键点"Add Existing Files to Group"添加源文件
-- 点"Options for Target"设置头文件路径
+- 右键点 "Add Existing Files to Group" 添加源文件
+- 点 "Options for Target" 设置头文件路径
 - 写 `#define USE_HAL_DRIVER` 到预定义宏
 - 点 "Build (F7)" 开始编译
 
-**CMake 就是把这些手动点击操作，换成一文本文件（CMakeLists.txt）来描述**，然后自动给你生成一套 Makefile 或 Ninja 等"编译脚本"，最后执行编译。
+**CMake 就是把这些手动点击操作，换成一文本文件（CMakeLists.txt）来描述**，然后自动给你生成一套 Makefile 或 Ninja 等 " 编译脚本 "，最后执行编译。
 
 ### Keil vs CMake 对照表
 
@@ -32,7 +32,7 @@ tags:
 | Options → Linker → Scatter File | `target_link_options(my_target PRIVATE -T stm32f411ceux.ld)` |
 | 点 Build (F7) | `cmake --build .` |
 
-**核心思路：把图形界面里"点一下"的每个操作，换成 CMakeLists.txt 里的一行文本。**
+**核心思路：把图形界面里 " 点一下 " 的每个操作，换成 CMakeLists.txt 里的一行文本。**
 
 ---
 
@@ -46,15 +46,15 @@ CMake 构建分 **两个阶段**，不是一步到位的。
 cmake -B build -G Ninja
 ```
 
-- `-B build`：指定"在 build 文件夹里操作"
-- `-G Ninja`：选择用 Ninja 这个"灶台"（也可以 `-G "Unix Makefiles"`）
+- `-B build`：指定 " 在 build 文件夹里操作 "
+- `-G Ninja`：选择用 Ninja 这个 " 灶台 "（也可以 `-G "Unix Makefiles"`）
 
 **这个阶段做了什么事？**
 
 - 读你的 CMakeLists.txt（食谱）
 - 检查编译器（arm-none-eabi-gcc）有没有装好
 - 检查头文件、源文件路径对不对
-- 把所有"准备知识"整理好，生成一份"清单"（Makefile 或 build.ninja）
+- 把所有 " 准备知识 " 整理好，生成一份 " 清单 "（Makefile 或 build.ninja）
 
 **类比**：你站在厨房里，先把菜谱读一遍 —— 确认有锅、有灶、冰箱里有菜、调味料齐全。**还没开始炒菜。**
 
@@ -66,7 +66,7 @@ cmake --build build
 
 **这个阶段做了什么事？**
 
-- 执行阶段 1 生成的"清单"里的每一条命令
+- 执行阶段 1 生成的 " 清单 " 里的每一条命令
 - 挨个编译每个 .c 文件 → .o 文件
 - 链接所有 .o 文件 → .elf / .hex / .bin
 
@@ -80,7 +80,7 @@ cmake --build build
 - `something.hex`（Intel Hex 格式，给烧录器用）
 - `something.bin`（纯二进制，给量产烧录用）
 
-**类比**：菜炒好了，装盘上桌。三种格式就像"热菜、冷盘、打包盒"，内容一样，包装不同。
+**类比**：菜炒好了，装盘上桌。三种格式就像 " 热菜、冷盘、打包盒 "，内容一样，包装不同。
 
 ---
 
@@ -119,11 +119,11 @@ my_project/
 业务逻辑    → firmware.elf（可执行文件，链接 libsensors.a）
 ```
 
-**类比 Keil**：一个 Keil 项目里可以包含多个 Target（在"Manage Project Items"里切换），每个 Target 有不同的源文件列表和编译选项。CMake 的 target 就是同样的概念。
+**类比 Keil**：一个 Keil 项目里可以包含多个 Target（在 "Manage Project Items" 里切换），每个 Target 有不同的源文件列表和编译选项。CMake 的 target 就是同样的概念。
 
 ### 3.3 `generator` —— 你用哪种灶台
 
-Generator 是 CMake 用来"生成构建脚本"的工具。
+Generator 是 CMake 用来 " 生成构建脚本 " 的工具。
 
 | Generator | 特点 | 适合场景 |
 |---|---|---|
@@ -133,7 +133,7 @@ Generator 是 CMake 用来"生成构建脚本"的工具。
 
 **选择方式**：`cmake -B build -G Ninja`
 
-**类比 Keil**：Keil 的编译器（ArmCC / ArmClang）是绑定在 IDE 里的。CMake 不绑定编译器，而是通过 generator 生成"编译脚本"，再由 Ninja/Make 去调用编译器。
+**类比 Keil**：Keil 的编译器（ArmCC / ArmClang）是绑定在 IDE 里的。CMake 不绑定编译器，而是通过 generator 生成 " 编译脚本 "，再由 Ninja/Make 去调用编译器。
 
 ### 3.4 `toolchain` —— 你的锅铲品牌
 
@@ -161,7 +161,7 @@ set(CMAKE_AR           arm-none-eabi-ar)
 cmake -B build -DCMAKE_TOOLCHAIN_FILE=arm-none-eabi-gcc.cmake
 ```
 
-**类比 Keil**：Keil 里你在 "Options → Target" 选择芯片型号（STM32F411CE），Keil 自动帮你选好编译器（ArmCC v6）。CMake 里你手动指定 toolchain 文件，告诉 CMake "我这个项目的编译器是 arm-none-eabi-gcc"。
+**类比 Keil**：Keil 里你在 "Options → Target" 选择芯片型号（STM32F411CE），Keil 自动帮你选好编译器（ArmCC v6）。CMake 里你手动指定 toolchain 文件，告诉 CMake " 我这个项目的编译器是 arm-none-eabi-gcc"。
 
 ### 3.5 `preset` —— 保存好的配方参数
 
@@ -196,13 +196,13 @@ cmake --preset debug
 cmake --build build/debug
 ```
 
-**类比 Keil**：存一个 `.uvprojx` 文件，所有配置都在里面，下次打开直接能用。Preset 就是帮你记住"这次用 Debug 配置，那个灶台，那个锅铲"。
+**类比 Keil**：存一个 `.uvprojx` 文件，所有配置都在里面，下次打开直接能用。Preset 就是帮你记住 " 这次用 Debug 配置，那个灶台，那个锅铲 "。
 
 ---
 
 ## 四、三个最重要的 CMake 命令（必背）
 
-### 4.1 `target_include_directories` —— "去哪里找 .h 文件"
+### 4.1 `target_include_directories` —— " 去哪里找 .h 文件 "
 
 ```cmake
 target_include_directories(firmware.elf PRIVATE
@@ -211,13 +211,13 @@ target_include_directories(firmware.elf PRIVATE
 )
 ```
 
-**PRIVATE** 表示"只有这个 target 能看到这些路径"。
+**PRIVATE** 表示 " 只有这个 target 能看到这些路径 "。
 
 **类比 Keil**：Options for Target → C/C++ → Include Paths，一行一个路径。
 
 ---
 
-### 4.2 `target_sources` —— "哪些 .c 文件参与编译"
+### 4.2 `target_sources` —— " 哪些 .c 文件参与编译 "
 
 ```cmake
 target_sources(firmware.elf PRIVATE
@@ -234,7 +234,7 @@ target_sources(firmware.elf PRIVATE
 
 ---
 
-### 4.3 `target_link_libraries` —— "需要链接哪些库"
+### 4.3 `target_link_libraries` —— " 需要链接哪些库 "
 
 ```cmake
 target_link_libraries(firmware.elf PRIVATE
