@@ -176,6 +176,47 @@ sequenceDiagram
     D-->>Task: 状态码 + 温度/湿度
 ```
 
+### V1.2 新增：统一测量帧读取 `aht21_read_measurement()`
+
+V1.2 把温度和湿度读取中重复的 I2C 流程抽取为单一函数，避免代码重复：
+
+```mermaid
+flowchart LR
+    MR[aht21_read_measurement] --> A[发 0xAC 0x33 0x00]
+    A --> B[等待 80ms + RTOS yield]
+    B --> C[轮询 busy bit bit7]
+    C -->|busy=1, 未超时| D[延时10ms 继续]
+    D --> C
+    C -->|busy=0| E[读7字节 CRC8校验]
+    C -->|超时 AHT21_BUSY_RETRY_MAX=10| F[返回 AHT21_ERRORTIMEOUT]
+    E -->|CRC匹配| G[返回 AHT21_OK + 原始数据]
+    E -->|CRC不匹配| H[返回 AHT21_ERROR]
+```
+
+温度和湿度各自从这个 6 字节帧中提取不同的位段：
+- **温度**：`data[3]低4位 | data[4] | data[5]` → 20位 → `(raw / 2^20) * 200 - 50`
+- **湿度**：`data[1] | data[2] | data[3]高4位` → 20位 → `(raw / 2^20) * 100`
+
+### 统一等待函数 `aht21_wait_ms()`
+
+不使用 `pf_delay_ms()` 阻塞延时，而是用 `pf_get_tick_count()` 轮询时间差：
+- **Tick 回绕安全**：使用 `(current - start) < delay_ms` 无符号减法自动处理回绕
+- **RTOS 友好**：每次轮询调用 `pf_rtos_yield()` 让出 CPU，不破坏系统实时性
+- **精度更高**：Tick 精度（通常 1ms）优于 RTOS delay 的调度抖动
+
+### CRC8 校验
+
+使用多项式 **0x31**，初值 **0xFF**，对前 6 字节计算，与第 7 字节比较。CRC 失败直接返回 `AHT21_ERROR`，不把损坏数据传给上层换算。
+
+### 初始化校准状态掩码 `AHT21_STATUS_VALID_MASK`
+
+定义为 `0x18`（bit3 + bit4），对应数据手册中 AHT21 的校准标志位。`aht21_init()` 流程：
+1. 读状态字 → 与 `0x18` 相与
+2. 不等 → 依次写 `0x1B/0x00/0x00`、`0x1C/0x00/0x00`、`0x1E/0x00/0x00` 三个校准寄存器
+3. 等待 10ms → 再次读状态校验
+
+这替代了旧版单命令 `0xBE` 的初始化方式，符合数据手册规定的完整校准序列。
+
 ### 错误处理和日志设计
 
 驱动函数返回 `aht21_status_t`，不要只返回一个布尔值。上层可以根据状态区分“参数错误”“资源未初始化”“IIC 超时”和“CRC 错误”。`DEBUG_AHT21` 控制日志宏，统一使用 `AHT21` 标签，便于 RTT/EasyLogger 过滤。
@@ -247,7 +288,7 @@ if (self->is_inited != AHT21_INIT) {
 | RTT 中 tag 显示为 `NO_TAG`，`AHT21` 跑到消息内容中       | `log_e("AHT21", msg)` 又被宏自动拼接 `LOG_TAG`，参数位置错位                                   | 多模块共享文件使用 `elog_e("AHT21", msg)`；单模块使用 `log_e(msg)`         |
 | `aht21_read_id` 返回成功，但实例化仍提示 invalid chip id | 返回值是 `aht21_status_t`，成功值是 `AHT21_OK=0`，却拿它和设备地址 `0x38` 比较                       | 使用 `AHT21_OK != aht21_read_id(self)`，不要把状态码和地址混用            |
 | AHT21 状态字读取失败                                | 状态命令要求“写 `0x71` → Stop → Start → 读 1 字节”，通用 `pf_receive_bytes` 使用 repeated start | 增加专用 `pf_read_status()`，按数据手册实现独立两段事务                       |
-| 上电后初始化失败或校准位无效                               | 原流程只等待 40 ms 便读状态，缺少 `0xBE 0x08 0x00` 初始化命令                                      | 上电等待至少 100 ms，发送初始化命令，等待约 10 ms 后再检查状态 bit3                 |
+| 上电后初始化失败或校准位无效                               | 原流程只等待 40 ms 便读状态（数据手册规定不少于 100 ms），且缺少校准序列                          | 上电等待至少 100 ms；若状态字 bit3/bit4 无效，依次写 0x1B/0x1C/0x1E 三个校准寄存器，等待约 10 ms 后再检查状态位 |
 | 温湿度读取偶发卡住                                    | ACK 等待或忙状态轮询没有有效超时/重试边界                                                          | 保留 IIC ACK 超时、`AHT21_BUSY_RETRY_MAX` 和 `AHT21_ERRORTIMEOUT` |
 | 读到了数值但温湿度不可信                                 | 未校验 CRC，或把 20 位原始数据的跨字节位段拼错                                                      | 先校验前 6 字节 CRC，再分别按位提取温度和湿度                                  |
 | 测试固件出现 `main multiply defined`               | Unity 测试入口泄漏到正常固件目标                                                              | 让测试入口只在测试宏下编译，保持 firmware `main()` 与 `unity_test_run()` 分离  |
@@ -297,31 +338,42 @@ A2：
 
 1. IIC 的 SDA 和 SCL 使用开漏输出，使用上拉电阻来让时钟线与数据线在空闲状态下保持高电平状态，当总线上有人拉低电平时，总线总体都会被拉低，不会出现推挽输出一个输出高电平一个输出低电平导致短路损坏总线，这样就实现了线与；而线与是从机应答的基础，空闲状态下总线为高电平，而主机发送信息后，从机拉低 SDA 总线表示接收成功；同时线与也是多主机仲裁的基础，谁先拉低谁作为从机接收数据
 
-### Q 3：Const 关键词的作用是什么？是在编译阶段产生作用，还是运行时阶段？
+### Q3：Const 关键词的作用是什么？是在编译阶段产生作用，还是运行时阶段？
 
-A 3 ：
+A3：
 
 1. Const 的作用是告诉编译器该变量的值固定，不能让其他操作修改
-2. 在编译阶段就产生作用了
+2. 在编译阶段就产生作用了（编译器在编译期检查赋值操作，拒绝非法写入）
 
 ## 🟡 进阶
 
 > 容易踩的坑和常见误区。
 
-### Q 4：请考虑如何在接口中加入 Const 来指示输入和输出参数，在指针符号前加入 const 和指针符号后加入 const 的区别是什么？
+### Q4：请考虑如何在接口中加入 Const 来指示输入和输出参数，在指针符号前加入 const 和指针符号后加入 const 的区别是什么？
 
-A 4：
+A4：
 
-1. 在函数定义的形参接口添加 const 来防止函数内部修改传入参数，输出参数如果为指针，则在 * 添加 const 修饰指针指向的内容
-2. Const 在指针左边就是修饰指针（指针的地址不可以变，指向可以改变），const 在指针右边就是修饰内容
+1. 在函数定义的形参接口添加 const 来防止函数内部修改传入参数，输出参数如果为指针，则在 `*` 添加 const 修饰指针指向的内容
+2. 从右向左读：`const int *p`（const 在 `*` 左边）→ p 是指向"常量 int"的指针，**指向的内容不可变，地址可变**；`int *const p`（const 在 `*` 右边）→ p 是"常量指针"指向 int，**地址不可变，指向的内容可变**；`const int *const p` → 地址和内容都锁死
+3. 在 driver 中的应用：`bsp_aht21_driver_inst(bsp_aht21_driver_t *self, aht21_ops_t *const ops_instance)` 中的 `*const` 确保函数不会把 `ops_instance` 指向其他地址，但可以通过它读取 ops 内部的函数指针
 
 ## 🔴 困难
 
 > 结合实战的深层原理和设计权衡。
 
-### Q4
+### Q5：`bsp_aht21_driver_inst()` 初始化失败时为什么要调用完整的 `pf_deinst()` 而不能只把 `is_inited` 设为 0？
 
-A4：
+A5：
+
+`pf_deinst()` 的清理由外向内依次释放：
+1. **I2C 接口**：置空 8 个函数指针（pf_init/pf_start/pf_stop/pf_send_bytes 等），再置空 `p_iic_driver_instance`
+2. **时基接口**：置空 `pf_get_tick_count`、`pf_delay_ms`，再置空 `p_timebase_instance`
+3. **RTOS 让出接口**：置空 `pf_rtos_yield`，再置空 `p_yield_instance`
+4. **中断接口**：置空 `pf_lock/unlock/disable_irq/enable_irq`，再置空 `p_irq_instance`
+5. **驱动函数指针**：置空 7 个北向接口（pf_init/pf_read_temp/pf_read_humidity/pf_sleep 等）
+6. **最后**：`is_inited = AHT21_NO_INIT`
+
+如果只清 `is_inited = 0`，残留的函数指针仍指向已失效的 static 函数。下一次误调用（如野指针触发 `pf_read_temp`）→ 访问已释放的 I2C/时基依赖 → 栈溢出或 HardFault。完整调用 `pf_deinst()` 保证任何时候都可以安全地重新调用 `bsp_aht21_driver_inst()` 进行二次装配。
 
 ---
 
