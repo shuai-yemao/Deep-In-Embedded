@@ -14,18 +14,18 @@ CMake 是一个跨平台的构建系统生成器，在嵌入式开发中逐渐�
 
 ## Keil vs CMake 概念对照
 
-| Keil µVision | CMake + VS Code | 说明 |
-|---|---|---|
-| `.uvprojx` 工程文件 | `CMakeLists.txt` | 纯文本，可 Git 管理 |
-| ARMCC/ARMCLANG 编译器 | `arm-none-eabi-gcc` | GCC 免费开源 |
-| 图形化选芯片型号 | 工具链文件 + 编译选项 | 需手写或 CubeMX 生成 |
-| 自动链接脚本 | `.ld` 链接脚本手写 | STM32CubeMX 可生成 |
-| F7 编译 | `cmake --build` | 命令行操作 |
-| F8 下载 | `cmake --build --target flash` | 需配置烧录脚本 |
-| Ctrl+F5 调试 | VS Code F5 (Cortex-Debug) | 插件化调试 |
-| RTE 图形化管理库 | `target_link_libraries` | 源码级包含 |
-| Options → C/C++ → Define | `target_compile_definitions()` | 宏定义配置 |
-| Options → C/C++ → Include Paths | `target_include_directories()` | 头文件路径 |
+| Keil µVision                    | CMake + VS Code                | 说明              |
+| ------------------------------- | ------------------------------ | --------------- |
+| `.uvprojx` 工程文件                 | `CMakeLists.txt`               | 纯文本，可 Git 管理    |
+| ARMCC/ARMCLANG 编译器              | `arm-none-eabi-gcc`            | GCC 免费开源        |
+| 图形化选芯片型号                        | 工具链文件 + 编译选项                   | 需手写或 CubeMX 生成  |
+| 自动链接脚本                          | `.ld` 链接脚本手写                   | STM32CubeMX 可生成 |
+| F7 编译                           | `cmake --build`                | 命令行操作           |
+| F8 下载                           | `cmake --build --target flash` | 需配置烧录脚本         |
+| Ctrl+F5 调试                      | VS Code F5 (Cortex-Debug)      | 插件化调试           |
+| RTE 图形化管理库                      | `target_link_libraries`        | 源码级包含           |
+| Options → C/C++ → Define        | `target_compile_definitions()` | 宏定义配置           |
+| Options → C/C++ → Include Paths | `target_include_directories()` | 头文件路径           |
 
 ---
 

@@ -6,7 +6,7 @@ created: 2026-07-10
 
 # CMake 项目文件管理指南
 
-> 在 Keil 里"右键 → Add Files"的事，在 CMake 里怎么做。
+> 在 Keil 里 " 右键 → Add Files" 的事，在 CMake 里怎么做。
 
 ---
 
@@ -28,6 +28,7 @@ CMake 管理方式：  创建文件    →  手动在 CMakeLists.txt 注册
 **需求**：在 `main.c` 里加一个 `delay_ms()` 函数
 
 **操作**：
+
 ```
 1. 打开 Core/Src/main.c
 2. 在 USER CODE 区域写函数
@@ -370,6 +371,7 @@ undefined reference to `AHT21_Init'
 ```
 
 **正确的流程**：
+
 ```bash
 # 改了 CMakeLists.txt 后
 cmake --preset Debug          # 重新配置
