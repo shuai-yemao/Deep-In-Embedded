@@ -194,12 +194,14 @@ flowchart LR
 ```
 
 温度和湿度各自从这个 6 字节帧中提取不同的位段：
-- **温度**：`data[3]低4位 | data[4] | data[5]` → 20位 → `(raw / 2^20) * 200 - 50`
-- **湿度**：`data[1] | data[2] | data[3]高4位` → 20位 → `(raw / 2^20) * 100`
+
+- **温度**：`data[3]低4位 | data[4] | data[5]` → 20 位 → `(raw / 2^20) * 200 - 50`
+- **湿度**：`data[1] | data[2] | data[3]高4位` → 20 位 → `(raw / 2^20) * 100`
 
 ### 统一等待函数 `aht21_wait_ms()`
 
 不使用 `pf_delay_ms()` 阻塞延时，而是用 `pf_get_tick_count()` 轮询时间差：
+
 - **Tick 回绕安全**：使用 `(current - start) < delay_ms` 无符号减法自动处理回绕
 - **RTOS 友好**：每次轮询调用 `pf_rtos_yield()` 让出 CPU，不破坏系统实时性
 - **精度更高**：Tick 精度（通常 1ms）优于 RTOS delay 的调度抖动
@@ -211,6 +213,7 @@ flowchart LR
 ### 初始化校准状态掩码 `AHT21_STATUS_VALID_MASK`
 
 定义为 `0x18`（bit3 + bit4），对应数据手册中 AHT21 的校准标志位。`aht21_init()` 流程：
+
 1. 读状态字 → 与 `0x18` 相与
 2. 不等 → 依次写 `0x1B/0x00/0x00`、`0x1C/0x00/0x00`、`0x1E/0x00/0x00` 三个校准寄存器
 3. 等待 10ms → 再次读状态校验
@@ -354,7 +357,7 @@ A3：
 A4：
 
 1. 在函数定义的形参接口添加 const 来防止函数内部修改传入参数，输出参数如果为指针，则在 `*` 添加 const 修饰指针指向的内容
-2. 从右向左读：`const int *p`（const 在 `*` 左边）→ p 是指向"常量 int"的指针，**指向的内容不可变，地址可变**；`int *const p`（const 在 `*` 右边）→ p 是"常量指针"指向 int，**地址不可变，指向的内容可变**；`const int *const p` → 地址和内容都锁死
+2. 从右向左读：`const int *p`（const 在 `*` 左边）→ p 是指向 " 常量 int" 的指针，**指向的内容不可变，地址可变**；`int *const p`（const 在 `*` 右边）→ p 是 " 常量指针 " 指向 int，**地址不可变，指向的内容可变**；`const int *const p` → 地址和内容都锁死
 3. 在 driver 中的应用：`bsp_aht21_driver_inst(bsp_aht21_driver_t *self, aht21_ops_t *const ops_instance)` 中的 `*const` 确保函数不会把 `ops_instance` 指向其他地址，但可以通过它读取 ops 内部的函数指针
 
 ## 🔴 困难
@@ -366,6 +369,7 @@ A4：
 A5：
 
 `pf_deinst()` 的清理由外向内依次释放：
+
 1. **I2C 接口**：置空 8 个函数指针（pf_init/pf_start/pf_stop/pf_send_bytes 等），再置空 `p_iic_driver_instance`
 2. **时基接口**：置空 `pf_get_tick_count`、`pf_delay_ms`，再置空 `p_timebase_instance`
 3. **RTOS 让出接口**：置空 `pf_rtos_yield`，再置空 `p_yield_instance`
