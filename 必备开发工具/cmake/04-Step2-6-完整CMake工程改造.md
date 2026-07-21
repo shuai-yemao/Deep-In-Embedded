@@ -101,6 +101,7 @@ PRIVATE = "只需要我自己"
 ```
 
 例：`target_link_libraries(elog PUBLIC segger_rtt)`
+
 → elog 需要 RTT 头文件，链接 elog 的目标也自动获得 RTT 头文件路径
 
 ### 3. 常用命令
@@ -128,6 +129,7 @@ JLink.exe -device STM32F411CE -if SWD -speed 4000 -autoconnect 1 -CommanderScrip
 ```
 
 flash.jlink 内容：
+
 ```
 device STM32F411CE
 si SWD
