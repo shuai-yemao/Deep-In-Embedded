@@ -424,6 +424,8 @@ A5：
 - `BSP/AHT21/driver/Src/bsp_aht21_driver.c` — 实例化、初始化、设备检测、测量、CRC、休眠和唤醒实现。
 - `BSP/AHT21/iic/Inc/bsp_aht21_iic.h` — IIC 总线和 GPIO 操作接口定义。
 - `BSP/AHT21/iic/Src/bsp_aht21_iic.c` — 软件 IIC Start/Stop、字节收发、ACK 和读写事务实现。
+- [[模拟SPI的设计思路]] — 对比：IIC 用 4 个南向接口，SPI 只用 2 个（ISP 原则的体现）
+- [[W25Qxx的driver文件架构设计思路]] — 对比：IIC vs SPI Driver 的接口差异和设计权衡
 - `System/Adapter/Src/system_adapter.c` — 将 IIC、时间基准、RTOS 和中断接口绑定到 driver 的工程适配。
 - `Middlewares/Third_Party/Unity/` — Unity 测试框架源码，用于驱动接口和协议逻辑测试。
 - [[AHT21的handler文件架构设计思路]] — driver 上层 handler 的数据组织和业务调用关系。
