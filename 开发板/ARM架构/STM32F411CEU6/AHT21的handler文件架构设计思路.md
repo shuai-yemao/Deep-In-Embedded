@@ -192,7 +192,7 @@ static uint32_t last_read_time[3] = {0};
 
 三种读取类型各自有独立的 `lifetime`，互不干扰。例如：温度 lifetime=500ms、湿度 lifetime=2000ms——读温度不会重置湿度的限频计时器。
 
-`lifetime = 0` 的语义是"无限频限制"（`elapsed_time < 0` 永远为 false），每次调用都直通传感器。但高频读取会导致 I2C 总线被占满和传感器过热，实际项目中应设置合理的最小间隔。
+`lifetime = 0` 的语义是 " 无限频限制 "（`elapsed_time < 0` 永远为 false），每次调用都直通传感器。但高频读取会导致 I2C 总线被占满和传感器过热，实际项目中应设置合理的最小间隔。
 
 ### 初始化的资源回滚
 
@@ -320,6 +320,7 @@ A 2：
 A3：
 
 Handler 代码**零改动**。它只依赖 `temp_humi_handler_sensor_ops_t` 抽象接口和 `void *instance` 通用指针，不包含任何 AHT21 专用命令或数据解析。新增 SHT30 只需：
+
 1. 为 SHT30 实现一套 `temp_humi_handler_sensor_ops_t` 包装函数（pf_init/pf_read_temp/pf_read_humidity/pf_deinit/pf_detect）
 2. 在 Adapter 层调用 `handler.pf_instance_register(&handler, &sht30_driver, &sht30_sensor_ops)` 注册即可
 
@@ -342,7 +343,7 @@ A4：
 | **并发场景** | 注册传感器 vs 遍历读取 | 多线程同时发起 I2C 通信 |
 | **失败后果** | 实例数不一致、野指针 | I2C 总线冲突、数据损坏 |
 
-如果合并：在 handler 遍历实例组时持锁等待 80ms 测量 → 注册传感器被阻塞 → 整个 handler 不可用。分层锁让 handler 的"管理"动作（微秒级）和 driver 的"通信"动作（毫秒级）互不干扰。
+如果合并：在 handler 遍历实例组时持锁等待 80ms 测量 → 注册传感器被阻塞 → 整个 handler 不可用。分层锁让 handler 的 " 管理 " 动作（微秒级）和 driver 的 " 通信 " 动作（毫秒级）互不干扰。
 
 ---
 
@@ -374,7 +375,7 @@ A4：
 - [[AHT21驱动调试-Bug记录]] — 记录 AHT21 驱动和 adapter 联调过程中遇到的问题、实验和修复方案。
 - [[根据数据手册编写AHT21的模拟IIC]] — 说明 AHT21 数据手册、模拟 IIC 时序和底层通信流程。
 - [[AHT21的单元测试文件架构设计思路]] — Driver 和 Handler 的 Mock 注入单元测试设计与覆盖分析。
-- [[W25Qxx的handler文件架构设计思路]] — 对比：事件+限频（AHT21）vs 块存储缓冲（W25Qxx）两种 Handler 设计模式
+- [[W25Qxx的handler文件架构设计思路]] — 对比：事件 + 限频（AHT21）vs 块存储缓冲（W25Qxx）两种 Handler 设计模式
 
 ## 💻 仓库链接
 
