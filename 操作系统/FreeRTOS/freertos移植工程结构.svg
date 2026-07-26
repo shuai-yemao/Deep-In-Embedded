@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="620" viewBox="0 0 1100 620">
+  <rect width="1100" height="620" fill="#f7f9fc"/>
+  <text x="45" y="48" font-family="Microsoft YaHei, sans-serif" font-size="28" font-weight="bold" fill="#1f2937">STM32F411CEU6 FreeRTOS 移植后的工程结构</text>
+  <g font-family="Consolas, Microsoft YaHei, sans-serif" font-size="18" fill="#1f2937">
+    <rect x="55" y="90" width="990" height="470" rx="14" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+    <text x="85" y="130" fill="#2563eb">stm32f411ceu6_freertos_transplant/</text>
+    <text x="105" y="172">├─ Core/</text><text x="145" y="204">├─ Inc/freertos_app.h</text><text x="145" y="236">├─ Src/freertos_app.c  ← 创建任务、启动调度器</text><text x="145" y="268">└─ Src/stm32f4xx_it.c  ← SVC/PendSV/SysTick 转发</text>
+    <text x="105" y="310">├─ Middlewares/FreeRTOS/</text><text x="145" y="342">├─ Config/FreeRTOSConfig.h</text><text x="145" y="374">├─ Source/include/</text><text x="145" y="406">├─ Source/portable/GCC/ARM_CM4F/port.c</text><text x="145" y="438">└─ Source/portable/MemMang/heap_4.c</text>
+    <text x="105" y="480">├─ cmake/stm32cubemx/CMakeLists.txt  ← 源文件与头文件接入</text><text x="105" y="520">└─ STM32F411XX_FLASH.ld  ← GCC10 兼容链接脚本</text>
+  </g>
+</svg>

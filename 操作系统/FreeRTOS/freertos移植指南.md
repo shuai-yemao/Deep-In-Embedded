@@ -1,0 +1,189 @@
+---
+title: STM32F411CEU6 FreeRTOS 移植指南
+date: 2026-07-26
+tags: [嵌入式, 操作系统, FreeRTOS, STM32F411, GCC, 移植]
+aliases: [FreeRTOS移植指南]
+status: 已完成软件构建验证
+---
+
+# STM32F411CEU6 FreeRTOS 移植指南
+
+> [!success] 本次工程状态
+> FreeRTOS-Kernel 11.1.0 已放入工程 `Middlewares/FreeRTOS`，CMake 已接入，ARM GCC Debug 构建已通过并生成 ELF。当前没有连接开发板，因此“任务实际运行、心跳变量递增、串口/LED 输出”仍需上板验证。
+
+![[freertos移植工程结构.svg]]
+
+## 1. 移植目标与工程事实
+
+本工程是 STM32CubeMX 生成的 CMake + GCC 工程，目标 MCU 为 STM32F411CEU6，内核为 Cortex-M4F，系统时钟配置为 100 MHz。FreeRTOS 源码来自：
+
+`D:\zhuomian\FreeRTOS\FreeRTOS-Kernel-11.1.0`
+
+本次采用原生 FreeRTOS Kernel，不引入 CMSIS-RTOS 包装层。工程中的最小验证任务只用于确认调度器和 tick 正常接入；后续业务代码建议再增加项目自己的 OS abstraction 层。
+
+## 2. 通用移植链路
+
+```mermaid
+flowchart TD
+    A[确认 MCU/编译器/工程系统] --> B[复制 Kernel 公共源码]
+    B --> C[选择对应 portable]
+    C --> D[编写 FreeRTOSConfig.h]
+    D --> E[接入 CMake/Keil 源文件与头文件]
+    E --> F[创建任务并调用 vTaskStartScheduler]
+    F --> G[绑定 SVC/PendSV/SysTick]
+    G --> H[交叉编译与链接]
+    H --> I{上板验证}
+    I -->|通过| J[确认任务切换、tick、堆和栈]
+    I -->|失败| K[按启动入口/中断优先级/堆栈定位]
+```
+
+通用原则是：Kernel 公共代码决定调度、队列和同步机制；`portable` 决定 CPU/编译器相关的上下文切换；`FreeRTOSConfig.h` 决定目标板的时钟、tick、优先级、堆和诊断策略；工程构建系统必须同时纳入这些源码和头文件。
+
+## 3. 第一步：准备源码目录
+
+本工程新增目录：
+
+```text
+Middlewares/FreeRTOS/
+├─ Config/FreeRTOSConfig.h
+└─ Source/
+   ├─ include/
+   ├─ portable/GCC/ARM_CM4F/port.c
+   ├─ portable/GCC/ARM_CM4F/portmacro.h
+   ├─ portable/MemMang/heap_4.c
+   └─ *.c
+```
+
+选择 `GCC/ARM_CM4F` 是因为工程使用 `arm-none-eabi-gcc`，目标是 Cortex-M4F；不能把 `ARM_CM3`、`ARM_CM4_MPU` 或其他编译器的 port 混入同一个构建目标。`heap_4.c` 提供可合并空闲块的动态内存分配，适合本次最小动态任务创建示例。
+
+## 4. 第二步：配置 FreeRTOS
+
+关键配置位于 `Middlewares/FreeRTOS/Config/FreeRTOSConfig.h`：
+
+```c
+#define configCPU_CLOCK_HZ                    ( SystemCoreClock )
+#define configTICK_RATE_HZ                    ( 100U )
+#define configUSE_PREEMPTION                  1
+#define configMAX_PRIORITIES                  5
+#define configTOTAL_HEAP_SIZE                 ( 12U * 1024U )
+#define configSUPPORT_DYNAMIC_ALLOCATION      1
+#define configCHECK_FOR_STACK_OVERFLOW        2
+#define configMAX_SYSCALL_INTERRUPT_PRIORITY  \
+    ( configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY << \
+      ( 8U - configPRIO_BITS ) )
+```
+
+本工程 NVIC 使用 4 bit priority，允许调用 FreeRTOS API 的中断优先级设为 5 及以下的逻辑优先级；优先级数值越小，硬件优先级越高。ISR 中调用 `FromISR` API 时必须继续遵守这个边界。
+
+## 5. 第三步：接入 CMake
+
+位置：`cmake/stm32cubemx/CMakeLists.txt`。
+
+接入了三组头文件目录：
+
+```cmake
+Middlewares/FreeRTOS/Config
+Middlewares/FreeRTOS/Source/include
+Middlewares/FreeRTOS/Source/portable/GCC/ARM_CM4F
+```
+
+并将以下源码加入 `FreeRTOS` OBJECT library：`croutine.c`、`event_groups.c`、`list.c`、`queue.c`、`stream_buffer.c`、`tasks.c`、`timers.c`、`port.c` 和 `heap_4.c`。当前配置关闭软件定时器和协程，未使用的对象会由链接器垃圾回收；保留源码列表便于后续打开对应配置。
+
+## 6. 第四步：创建任务和启动调度器
+
+位置：`Core/Src/freertos_app.c`，入口声明在 `Core/Inc/freertos_app.h`，由 `Core/Src/main.c` 在 HAL、时钟和外设初始化后调用。
+
+```c
+result = xTaskCreate(freertos_heartbeat_task,
+                     "heartbeat",
+                     256U,
+                     NULL,
+                     tskIDLE_PRIORITY + 1U,
+                     NULL);
+configASSERT(result == pdPASS);
+vTaskStartScheduler();
+```
+
+验证任务每 1000 ms 执行一次并递增 `g_freertos_heartbeat`。它没有依赖具体 LED 或串口，便于把“调度器能否启动”与“板级输出是否配置”分开验证。
+
+## 7. 第五步：绑定 Cortex-M 中断入口
+
+位置：`Core/Src/stm32f4xx_it.c`。
+
+```c
+void SVC_Handler(void)       { vPortSVCHandler(); }
+void PendSV_Handler(void)    { xPortPendSVHandler(); }
+void SysTick_Handler(void)
+{
+    HAL_IncTick();
+    xPortSysTickHandler();
+}
+```
+
+SVC 用于启动第一个任务，PendSV 用于上下文切换，SysTick 用于产生 RTOS tick。本工程保留 `HAL_IncTick()`，使 HAL 的超时基准也继续工作。FreeRTOS 启动后不要再由其他定时器重复驱动同一套 tick。
+
+## 8. 第六步：兼容 GCC 版本并构建
+
+工程的 GCC preset 是 `CMakePresets.json` 中的 `Debug`，实际命令：
+
+```powershell
+cmake --preset Debug
+cmake --build --preset Debug --parallel 4
+```
+
+本机使用 `F:\ARM GNU\10 2021.10\bin\arm-none-eabi-gcc.exe`。CubeMX 生成的 `STM32F411XX_FLASH.ld` 使用了 GCC 11 才支持的 `READONLY` 输出段语法，本次已移除该关键字，使 GCC 10.3.1 可以链接。
+
+![[freertos构建验证.svg]]
+
+## 9. 验证清单
+
+| 层级 | 验证项 | 本次结果 |
+|---|---|---|
+| 源码 | Kernel、CM4F port、heap_4 已存在 | 通过 |
+| 构建 | ARM GCC 编译所有 FreeRTOS 与工程源码 | 通过 |
+| 链接 | 生成 `stm32f411ceu6_freertos_transplant.elf` | 通过 |
+| 资源 | RAM 14,248 B / 128 KB；Flash 16,076 B / 512 KB | 通过 |
+| 调度 | `vTaskStartScheduler()` 已接入 | 软件已接入 |
+| 上板 | heartbeat 递增、任务切换、实际 tick | 待连接开发板 |
+
+## 10. 常见问题
+
+### 编译器报 `cpsid i` 不支持
+
+通常是误用了主机 GCC。使用 `cmake --preset Debug`，不要直接使用没有 toolchain file 的 `cmake -S . -B build`。
+
+### `stm32f4xx.h` 提示未选择芯片
+
+FreeRTOS OBJECT library 也必须获得 `STM32F411xE` 编译宏；本工程在 `cmake/stm32cubemx/CMakeLists.txt` 中显式设置了它。
+
+### 链接报 `vApplicationStackOverflowHook` 未定义
+
+当 `configCHECK_FOR_STACK_OVERFLOW` 大于 0 时必须提供 hook。本工程实现位于 `Core/Src/freertos_app.c`，出现栈溢出后关闭中断并停在死循环，便于调试器定位。
+
+### 任务创建成功但程序不运行
+
+优先检查启动文件是否指向 `SVC_Handler`、`PendSV_Handler` 和 `SysTick_Handler`，再检查 `SysTick_Handler` 是否调用 `xPortSysTickHandler()`，最后检查 `configMAX_SYSCALL_INTERRUPT_PRIORITY` 与 NVIC 优先级分组。
+
+## 11. 可复用移植模板
+
+迁移到其他 Cortex-M 工程时按下面顺序执行：
+
+1. 记录 MCU 内核、FPU、编译器、系统时钟和 NVIC priority bits。
+2. 复制 Kernel 公共源码、目标 compiler/CPU 的 `portable` 和一个 `heap_x.c`。
+3. 创建唯一的 `FreeRTOSConfig.h`，先只打开任务、tick、动态内存和断言。
+4. 将 Kernel 源码和 port 加入构建系统，确认配置头文件可被所有 Kernel `.c` 找到。
+5. 在应用初始化完成后创建一个最小任务，再调用 `vTaskStartScheduler()`。
+6. 将 SVC、PendSV、SysTick 绑定到对应 port 函数；确认 HAL tick 是否需要保留。
+7. 先完成 ARM 交叉编译和链接，再做上板验证。
+8. 上板观察任务心跳、tick 计数、栈余量和 malloc failed hook；确认后再增加队列、信号量、软件定时器等功能。
+
+## 总结
+
+FreeRTOS 移植不是只复制几个 `.c` 文件，而是 Kernel、CPU port、配置、构建系统和三个异常入口的共同接入。本工程已经完成 STM32F411CEU6 + GCC + Cortex-M4F 的软件构建闭环。后续上板时，最小验收目标是 heartbeat 任务持续递增，并在调试器中确认 `xPortSysTickHandler` 和 PendSV 发生。
+
+## 参考资料
+
+- [FreeRTOS-Kernel 11.1.0](https://github.com/FreeRTOS/FreeRTOS-Kernel) — 本次使用的内核源码版本。
+- [[FreeRTOS入门手册_中文.pdf]]
+- [[FreeRTOS开发指南_V1.10.pdf]]
+- [[STM32FreeRTOSbug大全]]

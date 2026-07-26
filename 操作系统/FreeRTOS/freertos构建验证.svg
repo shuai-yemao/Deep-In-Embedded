@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="430" viewBox="0 0 1100 430">
+  <rect width="1100" height="430" fill="#111827"/>
+  <text x="38" y="52" font-family="Consolas, Microsoft YaHei, sans-serif" font-size="24" fill="#93c5fd">cmake --build --preset Debug --parallel 4</text>
+  <g font-family="Consolas, Microsoft YaHei, sans-serif" font-size="21">
+    <text x="38" y="105" fill="#d1d5db">[25/26] Linking C executable stm32f411ceu6_freertos_transplant.elf</text>
+    <text x="38" y="150" fill="#86efac">Memory region         Used Size  Region Size  %age Used</text>
+    <text x="38" y="192" fill="#d1d5db">RAM:                   14248 B       128 KB     10.87%</text>
+    <text x="38" y="234" fill="#d1d5db">FLASH:                 16076 B       512 KB      3.07%</text>
+    <text x="38" y="300" fill="#86efac">构建结果：通过</text>
+    <text x="38" y="344" fill="#fbbf24">说明：已完成 ARM 交叉编译；尚未连接开发板做运行时验证。</text>
+  </g>
+</svg>
