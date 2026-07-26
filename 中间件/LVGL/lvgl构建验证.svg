@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="500" viewBox="0 0 980 500">
+  <style>
+    .title { font: 700 26px 'Microsoft YaHei', sans-serif; fill: #17324d; }
+    .label { font: 600 18px 'Microsoft YaHei', sans-serif; fill: #17324d; }
+    .value { font: 700 24px 'Consolas', monospace; fill: #147d55; }
+    .small { font: 15px 'Microsoft YaHei', sans-serif; fill: #3a506b; }
+    .box { stroke: #4c6a85; stroke-width: 2; rx: 12; }
+  </style>
+  <rect width="980" height="500" fill="#f7fafc"/><text x="40" y="48" class="title">LVGL 分支 · 构建验证证据</text>
+  <rect x="50" y="90" width="410" height="270" class="box" fill="#e8f1fb"/><text x="80" y="130" class="label">Debug · -O0 -g3</text>
+  <text x="80" y="180" class="value">FLASH 463,140 B</text><text x="80" y="220" class="value">RAM      49,816 B</text>
+  <text x="80" y="270" class="small">512 KB Flash · 128 KB RAM</text><text x="80" y="305" class="small">编译与链接通过</text>
+  <rect x="520" y="90" width="410" height="270" class="box" fill="#e9f7ef"/><text x="550" y="130" class="label">Release · -Os</text>
+  <text x="550" y="180" class="value">FLASH 237,708 B</text><text x="550" y="220" class="value">RAM      33,344 B</text>
+  <text x="550" y="270" class="small">Flash 使用率 45.34%</text><text x="550" y="305" class="small">适合继续接入真实 LCD 驱动</text>
+  <text x="50" y="420" class="small">命令：cmake --preset Release ； cmake --build --preset Release -j 4</text>
+</svg>

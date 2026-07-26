@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="640" viewBox="0 0 1100 640">
+  <style>
+    .title { font: 700 26px 'Microsoft YaHei', sans-serif; fill: #17324d; }
+    .label { font: 600 18px 'Microsoft YaHei', sans-serif; fill: #17324d; }
+    .small { font: 15px 'Microsoft YaHei', sans-serif; fill: #3a506b; }
+    .box { stroke: #4c6a85; stroke-width: 2; rx: 12; }
+    .arrow { stroke: #4c6a85; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+  </style>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L9,3 L0,6 Z" fill="#4c6a85"/></marker></defs>
+  <rect width="1100" height="640" fill="#f7fafc"/>
+  <text x="40" y="48" class="title">STM32F411CEU6 · LVGL v9 移植工程结构</text>
+  <rect x="40" y="90" width="250" height="180" class="box" fill="#e8f1fb"/>
+  <text x="62" y="125" class="label">应用 / OS</text><text x="62" y="160" class="small">Core/Src/freertos_app.c</text>
+  <text x="62" y="188" class="small">Core/Src/lvgl_port.c</text><text x="62" y="216" class="small">lvgl_task + lv_timer_handler</text>
+  <text x="62" y="244" class="small">HAL_GetTick + FreeRTOS</text>
+  <rect x="330" y="90" width="300" height="180" class="box" fill="#e9f7ef"/>
+  <text x="352" y="125" class="label">LVGL 配置 / 端口</text><text x="352" y="160" class="small">Middlewares/LVGL/Config/lv_conf.h</text>
+  <text x="352" y="188" class="small">LV_USE_OS = LV_OS_FREERTOS</text><text x="352" y="216" class="small">RGB565 · PARTIAL · 8 行缓冲</text>
+  <text x="352" y="244" class="small">128 × 64 虚拟 framebuffer</text>
+  <rect x="670" y="90" width="390" height="180" class="box" fill="#fff4df"/>
+  <text x="692" y="125" class="label">LVGL 源码</text><text x="692" y="160" class="small">Middlewares/LVGL/include</text>
+  <text x="692" y="188" class="small">Middlewares/LVGL/src</text><text x="692" y="216" class="small">LVGL_VERSION 9.6.0-dev</text>
+  <text x="692" y="244" class="small">源仓库 commit 02c8fbfeb</text>
+  <path d="M290 180 L330 180" class="arrow"/><path d="M630 180 L670 180" class="arrow"/>
+  <rect x="160" y="360" width="300" height="150" class="box" fill="#f1eafe"/>
+  <text x="182" y="400" class="label">CMake 构建边界</text><text x="182" y="435" class="small">cmake/stm32cubemx/CMakeLists.txt</text>
+  <text x="182" y="463" class="small">LVGL OBJECT target</text><text x="182" y="491" class="small">配置 / FreeRTOS / CMSIS include</text>
+  <rect x="620" y="360" width="320" height="150" class="box" fill="#fdebec"/>
+  <text x="642" y="400" class="label">当前验证输出</text><text x="642" y="435" class="small">Release ELF · 237,708 B Flash</text>
+  <text x="642" y="463" class="small">RAM 33,344 B</text><text x="642" y="491" class="small">实体 LCD / 触摸：待硬件确认</text>
+  <path d="M470 270 L340 360" class="arrow"/><path d="M760 270 L780 360" class="arrow"/>
+</svg>
