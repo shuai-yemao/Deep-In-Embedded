@@ -194,7 +194,7 @@ firmware: build/Debug/stm32f411ceu6_freertos_transplant.elf
 Connecting to J-Link via USB...FAILED: Cannot connect to the probe/programmer.
 ```
 
-第一次尝试因主机未枚举 J-Link 而未执行下载；随后探针恢复枚举并完成验证：J-Link CE（SN `69701612`）通过 SWD 连接 STM32F411CE，VTref 约 3.325 V；ELF 下载和 Program & Verify 均返回 `O.K.`。运行约 3.5 秒后读取到 `g_freertos_heartbeat = 0x11`，再次读取为 `0x1F`，`GPIOC->ODR = 0x00000000`，且 `CFSR = 0`。目标 CPU 保持 Thread 模式运行，PC13 任务正在持续调度。
+第一次尝试因主机未枚举 J-Link 而未执行下载；随后探针恢复枚举并完成验证：J-Link CE（SN `69701612`）通过 SWD 连接 STM32F411CE，VTref 约 3.325 V；ELF 下载和 Program & Verify 均返回 `O.K.`。运行约 3.5 秒后读取到 `g_freertos_heartbeat = 0x11`，再次读取为 `0x1F`，`GPIOC->ODR = 0x00000000`，且 `CFSR = 0`。随后进行两个相隔约 1.1 秒的 ODR 采样，读到 `0x00002000` 和 `0x00000000`，证明 PC13 正在翻转；目标 CPU 保持 Thread 模式运行，PC13 任务正在持续调度。
 
 第一次下载后的运行检查曾出现 HardFault。异常堆栈定位到 `xTaskResumeAll()`，根因是 SVC/PendSV 使用普通 C 包装函数，破坏了 FreeRTOS 异常返回栈。现已在 `Core/Src/stm32f4xx_it.c` 改为 `naked` 分支转发：
 
