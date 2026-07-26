@@ -221,9 +221,13 @@ volatile uint32_t g_lvgl_last_flush_pixels;
 ```
 
 本次 Debug ELF 已使用 J-Link V9 下载到 STM32F411CEU6。运行 15 s 后读取到：
+
 `g_freertos_heartbeat=18`、`g_freertos_scheduler_started=1`、
+
 `g_lvgl_flush_count=6`、`g_lvgl_last_flush_pixels=4800`、
+
 `g_lvgl_last_flush_status=0`、FreeRTOS 调度器运行、CFSR=0。
+
 这些数值证明 LED 任务、LVGL 任务和 Flush Callback 已运行；最终文字和色块仍需以屏幕实物观察确认。
 
 ## 5. ST7789 实际硬件接入
@@ -294,9 +298,13 @@ bsp_st7789_status_t bsp_st7789_driver_inst(
 ```
 
 构造函数绑定 `pf_init`、`pf_deinit`、`pf_set_window`、`pf_write_pixels`、
+
 `pf_fill` 和 `pf_set_backlight`。这些操作的实现均为 Driver 源文件中的
+
 `static` 函数，调用方通过 `bsp_st7789_driver_t` 实例函数指针访问。
+
 实例中的 `is_inited` 在初始化成功后才置为 `BSP_ST7789_INITED`，所有窗口、
+
 像素和方向操作都会先检查该状态。
 
 南向 Core 分为三类：
@@ -306,11 +314,13 @@ bsp_st7789_status_t bsp_st7789_driver_inst(
 - `bsp_st7789_gpio_interface_t`：LCD_RST 和背光控制。
 
 Port 中的 `port_spi_write` 使用 W25Qxx 参考工程的 `bsp_gpio_spi`，因此
+
 Driver 不关心当前 SPI 是硬件外设还是 GPIO 模拟实现。
 
 ### 5.3 Handle 南向服务与事件模型
 
 `BSP/ST7789/Handler/Inc/bsp_display_handle.h` 只提供构造函数和
+
 `bsp_display_handle_register_driver`。Handle 实例保存以下内部函数指针：
 
 ```c
@@ -321,12 +331,17 @@ p_self->pf_event_submit;
 ```
 
 `bsp_display_handle_driver_ops_t` 是 Handle 面向具体 Driver 的抽象表，
+
 作用类似参考工程的 `sensor_ops`。Adapter Port 将 ST7789 Driver 的实例
+
 函数指针包装为该表；Handle 不包含 ST7789 协议实现。
 
 构造时由 OS Ops 创建互斥锁、8 个元素的事件队列和 `display_handle` 工作
+
 线程。事件包括区域写入、整屏填色、背光控制和停止事件。工作线程取出
+
 事件后调用内部同步操作，最后执行 `pf_callback(status, context)`。
+
 区域写入事件只复制像素指针，不复制像素数据，回调完成前必须保证缓冲区有效。
 
 ```mermaid
