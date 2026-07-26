@@ -15,9 +15,9 @@ status: verified-board
 # LVGL 移植指南（STM32F411CEU6 + FreeRTOS）
 
 > [!summary] 本次结论
-> 已在 `lvgl` 分支将本地 LVGL v9.6.0-dev 接入 STM32F411CEU6 + FreeRTOS，并按实际 ST7789 接线完成 GPIO-SPI、Driver、Display Handle、Adapter Port、Adapter Wrapper、LVGL Flush 和启动 Demo。
+> 已在 `lvgl` 分支将本地 LVGL v9.6.0-dev 接入 STM32F411CEU6 + FreeRTOS，并按实际 ST7789 接线完成 GPIO-SPI、Driver、Display Handle、Adapter Port、Adapter Wrapper、LVGL Flush 和启动 Demo。Driver/Handle 已按“构造函数 + 实例函数指针 + 依赖注入”重构。
 >
-> J-Link 板级证据：固件下载与校验通过；运行 15 s 后 `g_freertos_heartbeat=15`、`g_lvgl_flush_count=5`、`g_lvgl_last_flush_pixels=4800`、`g_lvgl_last_flush_status=0`、CFSR=0。说明 FreeRTOS/LED 任务和 LVGL→ST7789 刷新链路均已运行。最终画面需以屏幕实物为准。
+> J-Link 板级证据：固件下载与校验通过；运行 15 s 后 `g_freertos_heartbeat=18`、`g_lvgl_flush_count=6`、`g_lvgl_last_flush_pixels=4800`、`g_lvgl_last_flush_status=0`、CFSR=0。说明 FreeRTOS/LED 任务和 LVGL→ST7789 刷新链路均已运行。最终画面需以屏幕实物为准。
 
 ## 1. 版本与工程基线
 
@@ -187,9 +187,9 @@ static void lvgl_task(void *argument)
 | `cmake/stm32cubemx/CMakeLists.txt` | LVGL OBJECT target、头文件路径和目标链接 |
 | `BSP/ST7789/Config/bsp_st7789_config.h` | 分辨率、偏移和 ST7789 命令/寄存器定义 |
 | `BSP/ST7789/Driver/` | ST7789 具体外设协议、窗口、像素和面板初始化 |
-| `BSP/ST7789/Adapter/Port/` | `bsp_gpio_spi` 实例、GPIO Core 和 FreeRTOS OS 注入 |
-| `BSP/ST7789/Adapter/Wrapper/` | 面向 OS、Middleware、App 的显示接口 |
-| `BSP/ST7789/Handler/` | `bsp_display_handle` 生命周期、互斥访问和状态管理 |
+| `BSP/ST7789/Adapter/Port/` | `bsp_gpio_spi` 实例、Core/tick/OS 注入、Driver Ops 注册 |
+| `BSP/ST7789/Adapter/Wrapper/` | 仅依赖 Port 的 OS、Middleware、App 显示接口 |
+| `BSP/ST7789/Handler/` | `bsp_display_handle` 生命周期、互斥、队列、线程和事件回调 |
 | `BSP/ST7789/Demo/` | 红/绿/蓝/白小色块 Driver Demo |
 | `BSP/ST7789/Adapter/Port/Src/bsp_gpio_spi.c` | 复用 W25Qxx 的 GPIO 模拟 SPI |
 | `Core/Src/gpio.c` | PA1/PA4/PA5/PA6/PA7、PB10 及 LED GPIO |
@@ -208,8 +208,8 @@ cmake --build --preset Release -j 4
 
 | 构建 | RAM | Flash | 状态 |
 |---|---:|---:|---|
-| Debug `-O0 -g3` | 57,056 B / 128 KB | 468,736 B / 512 KB | 通过 |
-| Release `-Os` | 56,976 B / 128 KB | 240,636 B / 512 KB | 通过 |
+| Debug `-O0 -g3` | 57,696 B / 128 KB | 473,072 B / 512 KB | 通过 |
+| Release `-Os` | 57,616 B / 128 KB | 242,828 B / 512 KB | 通过 |
 
 ![[lvgl构建验证.svg|720]]
 
@@ -221,13 +221,9 @@ volatile uint32_t g_lvgl_last_flush_pixels;
 ```
 
 本次 Debug ELF 已使用 J-Link V9 下载到 STM32F411CEU6。运行 15 s 后读取到：
-
-`g_freertos_heartbeat=15`、`g_freertos_scheduler_started=1`、
-
-`g_lvgl_flush_count=5`、`g_lvgl_last_flush_pixels=4800`、
-
+`g_freertos_heartbeat=18`、`g_freertos_scheduler_started=1`、
+`g_lvgl_flush_count=6`、`g_lvgl_last_flush_pixels=4800`、
 `g_lvgl_last_flush_status=0`、FreeRTOS 调度器运行、CFSR=0。
-
 这些数值证明 LED 任务、LVGL 任务和 Flush Callback 已运行；最终文字和色块仍需以屏幕实物观察确认。
 
 ## 5. ST7789 实际硬件接入
@@ -255,10 +251,10 @@ ST7789 参数来自原工程 `st7789.h` 的 `USING_240X280` profile：240×280�
 
 | 模块 | 只负责什么 | 不应依赖什么 |
 |---|---|---|
-| `bsp_st7789_driver` | ST7789 命令、寄存器、窗口和像素协议 | HAL、FreeRTOS、LVGL |
-| `bsp_display_handle` | 显示实例生命周期、状态和互斥访问 | 具体 HAL、FreeRTOS 头文件 |
-| `Adapter Port` | 创建 `bsp_gpio_spi`、GPIO Core、FreeRTOS OS 表并注入 | LVGL/App 业务 |
-| `Adapter Wrapper` | 为 OS、Middleware、App 提供稳定的显示 API | 直接暴露底层 SPI 细节 |
+| `bsp_st7789_driver` | ST7789 命令、寄存器、窗口和像素协议；只对外提供构造函数 | HAL、FreeRTOS、LVGL |
+| `bsp_display_handle` | Driver 注册、状态、互斥、队列、工作线程和事件回调 | 具体 HAL、FreeRTOS 头文件 |
+| `Adapter Port` | 创建 `bsp_gpio_spi`、SPI/tick/GPIO Core、OS 表和 Driver Ops 并注入 | LVGL/App 业务 |
+| `Adapter Wrapper` | 只依赖 Port，为 OS、Middleware、App 提供稳定显示 API | 直接暴露底层 SPI 细节 |
 
 本次设计参考了以下实际工程：
 
@@ -272,15 +268,88 @@ ST7789 参数来自原工程 `st7789.h` 的 `USING_240X280` profile：240×280�
 
 ```mermaid
 flowchart LR
-    APP[LVGL Widget] --> PORT[Core/Src/lvgl_port.c]
-    PORT --> WRAPPER[Adapter Wrapper]
-    WRAPPER --> HANDLE[bsp_display_handle]
-    HANDLE --> DRIVER[ST7789 Driver]
-    PORT --> DRIVER
-    PORT --> HANDLE
-    PORT --> BUS[bsp_gpio_spi 实例]
+    APP[LVGL Widget] --> LVPORT[Core lvgl_port]
+    LVPORT --> WRAPPER[Adapter Wrapper]
+    WRAPPER --> PORT[Adapter Port]
+    PORT -->|构造/注册| HANDLE[bsp_display_handle]
+    PORT -->|构造/注入| DRIVER[ST7789 Driver]
+    HANDLE -->|Driver Ops| DRIVER
+    PORT -->|SPI/tick/GPIO| CORE[Core interfaces]
+    PORT -->|OS| OS[FreeRTOS adapters]
+    CORE --> BUS[bsp_gpio_spi]
     BUS --> HAL[GPIO HAL]
+    HANDLE --> QUEUE[Queue + worker thread]
+    QUEUE --> CALLBACK[Event callback]
     HAL --> LCD[ST7789 240x280]
+```
+
+### 5.2 Driver 北向与南向接口
+
+Driver 头文件 `BSP/ST7789/Driver/Inc/bsp_st7789_driver.h` 的公共函数只有：
+
+```c
+bsp_st7789_status_t bsp_st7789_driver_inst(
+    bsp_st7789_driver_t *p_self,
+    bsp_st7789_core_ops_t *p_core_ops);
+```
+
+构造函数绑定 `pf_init`、`pf_deinit`、`pf_set_window`、`pf_write_pixels`、
+`pf_fill` 和 `pf_set_backlight`。这些操作的实现均为 Driver 源文件中的
+`static` 函数，调用方通过 `bsp_st7789_driver_t` 实例函数指针访问。
+实例中的 `is_inited` 在初始化成功后才置为 `BSP_ST7789_INITED`，所有窗口、
+像素和方向操作都会先检查该状态。
+
+南向 Core 分为三类：
+
+- `bsp_st7789_spi_interface_t`：SPI 初始化、发送、CS 和 DC。
+- `bsp_st7789_timebase_interface_t`：`pf_get_tick_ms` 和毫秒延时。
+- `bsp_st7789_gpio_interface_t`：LCD_RST 和背光控制。
+
+Port 中的 `port_spi_write` 使用 W25Qxx 参考工程的 `bsp_gpio_spi`，因此
+Driver 不关心当前 SPI 是硬件外设还是 GPIO 模拟实现。
+
+### 5.3 Handle 南向服务与事件模型
+
+`BSP/ST7789/Handler/Inc/bsp_display_handle.h` 只提供构造函数和
+`bsp_display_handle_register_driver`。Handle 实例保存以下内部函数指针：
+
+```c
+p_self->pf_write_area;
+p_self->pf_fill;
+p_self->pf_set_backlight;
+p_self->pf_event_submit;
+```
+
+`bsp_display_handle_driver_ops_t` 是 Handle 面向具体 Driver 的抽象表，
+作用类似参考工程的 `sensor_ops`。Adapter Port 将 ST7789 Driver 的实例
+函数指针包装为该表；Handle 不包含 ST7789 协议实现。
+
+构造时由 OS Ops 创建互斥锁、8 个元素的事件队列和 `display_handle` 工作
+线程。事件包括区域写入、整屏填色、背光控制和停止事件。工作线程取出
+事件后调用内部同步操作，最后执行 `pf_callback(status, context)`。
+区域写入事件只复制像素指针，不复制像素数据，回调完成前必须保证缓冲区有效。
+
+```mermaid
+sequenceDiagram
+    participant App as LVGL/App
+    participant W as Adapter Wrapper
+    participant H as Display Handle
+    participant Q as OS Queue
+    participant T as Handle Thread
+    participant D as Driver Ops
+
+    App->>W: write_area()
+    W->>H: pf_write_area()
+    H->>H: mutex take
+    H->>D: pf_set_window()
+    H->>D: pf_write_pixels()
+    H->>H: mutex give
+    H-->>W: status
+    App->>H: pf_event_submit(event)
+    H->>Q: queue put
+    T->>Q: queue get
+    T->>D: dispatch event
+    T-->>App: pf_callback(status, context)
 ```
 
 启动测试顺序：
