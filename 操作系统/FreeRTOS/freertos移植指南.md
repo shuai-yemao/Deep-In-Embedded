@@ -3,13 +3,13 @@ title: STM32F411CEU6 FreeRTOS 移植指南
 date: 2026-07-26
 tags: [嵌入式, 操作系统, FreeRTOS, STM32F411, GCC, 移植]
 aliases: [FreeRTOS移植指南]
-status: 已完成软件构建验证
+status: 已完成板级运行验证
 ---
 
 # STM32F411CEU6 FreeRTOS 移植指南
 
 > [!success] 本次工程状态
-> FreeRTOS-Kernel 11.1.0 已放入工程 `Middlewares/FreeRTOS`，CMake 已接入，ARM GCC Debug 构建已通过并生成 ELF。当前没有连接开发板，因此“任务实际运行、心跳变量递增、串口/LED 输出”仍需上板验证。
+> FreeRTOS-Kernel 11.1.0 已放入工程 `Middlewares/FreeRTOS`，CMake 已接入，ARM GCC Debug 构建已通过并生成 ELF。基于 `PC13` 的 FreeRTOS LED 任务已经通过 J-Link 下载并运行验证。
 
 ![[freertos移植工程结构.svg]]
 
@@ -94,8 +94,8 @@ Middlewares/FreeRTOS/Source/portable/GCC/ARM_CM4F
 位置：`Core/Src/freertos_app.c`，入口声明在 `Core/Inc/freertos_app.h`，由 `Core/Src/main.c` 在 HAL、时钟和外设初始化后调用。
 
 ```c
-result = xTaskCreate(freertos_heartbeat_task,
-                     "heartbeat",
+result = xTaskCreate(freertos_led_task,
+                     "led",
                      256U,
                      NULL,
                      tskIDLE_PRIORITY + 1U,
@@ -104,7 +104,7 @@ configASSERT(result == pdPASS);
 vTaskStartScheduler();
 ```
 
-验证任务每 1000 ms 执行一次并递增 `g_freertos_heartbeat`。它没有依赖具体 LED 或串口，便于把“调度器能否启动”与“板级输出是否配置”分开验证。
+验证任务每 1000 ms 执行一次、递增 `g_freertos_heartbeat` 并翻转 `PC13`。常见 STM32F411 Black Pill 板载 LED 为低电平点亮；若你的板卡 LED 接线不同，需要按原理图调整引脚。
 
 ## 7. 第五步：绑定 Cortex-M 中断入口
 
@@ -142,9 +142,9 @@ cmake --build --preset Debug --parallel 4
 | 源码 | Kernel、CM4F port、heap_4 已存在 | 通过 |
 | 构建 | ARM GCC 编译所有 FreeRTOS 与工程源码 | 通过 |
 | 链接 | 生成 `stm32f411ceu6_freertos_transplant.elf` | 通过 |
-| 资源 | RAM 14,248 B / 128 KB；Flash 16,076 B / 512 KB | 通过 |
+| 资源 | RAM 14,248 B / 128 KB；Flash 16,220 B / 512 KB | 通过 |
 | 调度 | `vTaskStartScheduler()` 已接入 | 软件已接入 |
-| 上板 | heartbeat 递增、任务切换、实际 tick | 待连接开发板 |
+| 上板 | heartbeat 递增、任务切换、PC13 LED 闪烁 | 通过 |
 
 ## 10. 常见问题
 
@@ -177,9 +177,40 @@ FreeRTOS OBJECT library 也必须获得 `STM32F411xE` 编译宏；本工程在 `
 7. 先完成 ARM 交叉编译和链接，再做上板验证。
 8. 上板观察任务心跳、tick 计数、栈余量和 malloc failed hook；确认后再增加队列、信号量、软件定时器等功能。
 
+## 12. J-Link 下载与上板验证记录
+
+本次尝试使用 SEGGER J-Link Commander V9.28，目标参数为：
+
+```text
+device: STM32F411CEU6
+interface: SWD
+speed: 4000 kHz
+firmware: build/Debug/stm32f411ceu6_freertos_transplant.elf
+```
+
+下载前先执行了探针连接检查。主机没有枚举到 SEGGER/J-Link USB 设备，Commander 返回：
+
+```text
+Connecting to J-Link via USB...FAILED: Cannot connect to the probe/programmer.
+```
+
+第一次尝试因主机未枚举 J-Link 而未执行下载；随后探针恢复枚举并完成验证：J-Link CE（SN `69701612`）通过 SWD 连接 STM32F411CE，VTref 约 3.325 V；ELF 下载和 Program & Verify 均返回 `O.K.`。运行约 3.5 秒后读取到 `g_freertos_heartbeat = 0x11`，再次读取为 `0x1F`，`GPIOC->ODR = 0x00000000`，且 `CFSR = 0`。目标 CPU 保持 Thread 模式运行，PC13 任务正在持续调度。
+
+第一次下载后的运行检查曾出现 HardFault。异常堆栈定位到 `xTaskResumeAll()`，根因是 SVC/PendSV 使用普通 C 包装函数，破坏了 FreeRTOS 异常返回栈。现已在 `Core/Src/stm32f4xx_it.c` 改为 `naked` 分支转发：
+
+```c
+void SVC_Handler(void) __attribute__((naked));
+void PendSV_Handler(void) __attribute__((naked));
+
+void SVC_Handler(void) { __asm volatile ("b vPortSVCHandler"); }
+void PendSV_Handler(void) { __asm volatile ("b xPortPendSVHandler"); }
+```
+
+修复后重新构建、下载、运行，CFSR 清零且 heartbeat 持续递增。
+
 ## 总结
 
-FreeRTOS 移植不是只复制几个 `.c` 文件，而是 Kernel、CPU port、配置、构建系统和三个异常入口的共同接入。本工程已经完成 STM32F411CEU6 + GCC + Cortex-M4F 的软件构建闭环。后续上板时，最小验收目标是 heartbeat 任务持续递增，并在调试器中确认 `xPortSysTickHandler` 和 PendSV 发生。
+FreeRTOS 移植不是只复制几个 `.c` 文件，而是 Kernel、CPU port、配置、构建系统和三个异常入口的共同接入。本工程已经完成 STM32F411CEU6 + GCC + Cortex-M4F 的构建、J-Link 下载和运行闭环；PC13 LED 任务已验证持续调度。
 
 ## 参考资料
 
