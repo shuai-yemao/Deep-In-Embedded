@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="560" viewBox="0 0 900 560">
+  <rect width="900" height="560" fill="#fffdf7"/>
+  <style>
+    .title{font:700 24px sans-serif;fill:#17324d}.h{font:700 16px sans-serif;fill:#17324d}.t{font:15px sans-serif;fill:#263238}.pin{font:700 15px monospace;fill:#7b1e1e}.lcd{fill:#a5f59a;stroke:#267d37;stroke-width:2}.mcu{fill:#e8f0ff;stroke:#3767a8;stroke-width:2}.wire{stroke:#294b9b;stroke-width:3}.reserved{stroke:#999;stroke-width:2;stroke-dasharray:7 6}
+  </style>
+  <text x="32" y="40" class="title">ST7789 实际硬件引脚映射（STM32F411CEU6）</text>
+  <text x="32" y="68" class="t">显示链路已接入；TP 引脚仅记录，等待确认触摸控制器型号与协议</text>
+  <rect x="60" y="110" width="250" height="360" rx="8" class="mcu"/>
+  <rect x="590" y="110" width="250" height="360" rx="8" class="lcd"/>
+  <text x="145" y="145" class="h">MCU GPIO / GPIO-SPI</text>
+  <text x="675" y="145" class="h">LCD connector</text>
+  <g class="pin">
+    <text x="95" y="185">PB10</text><text x="95" y="225">PA1</text><text x="95" y="265">PA4</text><text x="95" y="305">PA5</text><text x="95" y="345">PA6</text><text x="95" y="385">PA7</text>
+    <text x="95" y="425">PB2</text><text x="95" y="455">PA15</text><text x="95" y="485">PA8</text><text x="95" y="515">PB4</text>
+    <text x="655" y="185">LCD_RST</text><text x="655" y="225">LCD_BLCAK</text><text x="655" y="265">LCD_CS</text><text x="655" y="305">LCD_CLK</text><text x="655" y="345">LCD_DC</text><text x="655" y="385">LCD_MOSI</text>
+    <text x="655" y="425">TP_INT</text><text x="655" y="455">TP_RST</text><text x="655" y="485">TP_SCL</text><text x="655" y="515">TP_SDA</text>
+  </g>
+  <g class="wire">
+    <path d="M185 180 H590"/><path d="M185 220 H590"/><path d="M185 260 H590"/><path d="M185 300 H590"/><path d="M185 340 H590"/><path d="M185 380 H590"/>
+  </g>
+  <g class="reserved">
+    <path d="M185 420 H590"/><path d="M185 450 H590"/><path d="M185 480 H590"/><path d="M185 510 H590"/>
+  </g>
+  <text x="60" y="545" class="t">蓝线：当前 ST7789 + bsp_gpio_spi 使用；灰色虚线：触摸硬件预留</text>
+</svg>

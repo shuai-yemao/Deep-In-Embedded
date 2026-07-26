@@ -9,15 +9,15 @@ tags:
 aliases:
   - STM32F411 LVGL 移植
   - LVGL v9 移植指南
-status: verified-build
+status: verified-board
 ---
 
 # LVGL 移植指南（STM32F411CEU6 + FreeRTOS）
 
 > [!summary] 本次结论
-> 已在 `lvgl` 分支将本地 LVGL v9.6.0-dev 接入 STM32F411CEU6 + FreeRTOS 工程，完成配置、CMake、Tick、GUI 任务、Display 和 RGB565 Flush Callback，并通过 Debug/Release 交叉编译。
+> 已在 `lvgl` 分支将本地 LVGL v9.6.0-dev 接入 STM32F411CEU6 + FreeRTOS，并按实际 ST7789 接线完成 GPIO-SPI、Driver、Display Handle、Adapter Port、Adapter Wrapper、LVGL Flush 和启动 Demo。
 >
-> 当前工程没有 LCD、SPI、触摸或按键外设配置，所以本次 Flush 的目标是 `128×64` 虚拟 framebuffer。真实屏幕显示仍需根据屏幕控制器、接口和引脚补齐 BSP Wrapper。
+> J-Link 板级证据：固件下载与校验通过；运行 15 s 后 `g_freertos_heartbeat=15`、`g_lvgl_flush_count=5`、`g_lvgl_last_flush_pixels=4800`、`g_lvgl_last_flush_status=0`、CFSR=0。说明 FreeRTOS/LED 任务和 LVGL→ST7789 刷新链路均已运行。最终画面需以屏幕实物为准。
 
 ## 1. 版本与工程基线
 
@@ -30,9 +30,13 @@ status: verified-build
 | OS | FreeRTOS Kernel 11.1.0，GCC ARM_CM4F |
 | 工程分支 | `freertos` 基线 → `lvgl` 集成 |
 | 颜色格式 | RGB565，16 bpp |
-| 当前显示 profile | 128×64，partial render，8 行 buffer |
+| 当前显示 profile | ST7789 240×280，RGB565，partial render，20 行 buffer，Y offset 20 |
+| SPI | 复用 W25Qxx 的 `bsp_gpio_spi`，PA5=SCK，PA7=MOSI，Mode 0 |
+| FreeRTOS heap | 24 KB；LVGL task stack 1024 words；LVGL task priority 1 |
 
 ![[lvgl工程结构.svg|720]]
+
+![[st7789引脚映射.svg|720]]
 
 ## 2. 通用移植步骤
 
@@ -118,12 +122,12 @@ target_compile_definitions(LVGL PRIVATE LV_CONF_INCLUDE_SIMPLE STM32F411xE)
 
 位置：`Core/Src/lvgl_port.c`
 
-初始化顺序：
+初始化顺序（由显示初始化任务在调度器启动后执行）：
 
 ```c
 lv_init();
 lv_tick_set_cb(HAL_GetTick);
-s_lvgl_display = lv_display_create(128U, 64U);
+s_lvgl_display = lv_display_create(240U, 280U);
 lv_display_set_color_format(s_lvgl_display, LV_COLOR_FORMAT_RGB565);
 lv_display_set_flush_cb(s_lvgl_display, lvgl_flush_cb);
 lv_display_set_buffers(s_lvgl_display, s_lvgl_draw_buffer, NULL,
@@ -137,7 +141,19 @@ Flush Callback 的职责是把 `area` 对应的像素送到 LCD，并且在同�
 lv_display_flush_ready(display);
 ```
 
-当前示例把 RGB565 像素复制到 `s_lvgl_framebuffer`，因此可以在没有 LCD 的情况下验证 LVGL 的渲染和 Flush 完成链路。真实 LCD 替换点就是 `lvgl_flush_cb` 中的区域复制代码。
+当前实现把 LVGL 小端 RGB565 转成 ST7789 要求的高字节在先格式，并按行调用 Adapter Wrapper。LVGL 不直接访问 HAL、GPIO-SPI 或 Driver。
+
+```c
+status = bsp_st7789_adapter_wrapper_write_area(
+    s_st7789_display,
+    (uint16_t)area->x1,
+    (uint16_t)y,
+    (uint16_t)area->x2,
+    (uint16_t)y,
+    s_lvgl_tx_row,
+    row_bytes);
+lv_display_flush_ready(display);
+```
 
 ### 2.6 创建 GUI 任务
 
@@ -148,7 +164,7 @@ static void lvgl_task(void *argument)
 {
     for (;;) {
         lv_timer_handler();
-        vTaskDelay(pdMS_TO_TICKS(5U));
+        vTaskDelay(pdMS_TO_TICKS(10U)); /* 100 Hz tick 下至少 1 tick */
     }
 }
 ```
@@ -169,6 +185,14 @@ static void lvgl_task(void *argument)
 | `Core/Src/lvgl_port.c` | `lv_init`、Tick、Display、Buffer、Flush、GUI task |
 | `Core/Src/freertos_app.c` | FreeRTOS LED task 与 `lvgl_port_init` 启动顺序 |
 | `cmake/stm32cubemx/CMakeLists.txt` | LVGL OBJECT target、头文件路径和目标链接 |
+| `BSP/ST7789/Config/bsp_st7789_config.h` | 分辨率、偏移和 ST7789 命令/寄存器定义 |
+| `BSP/ST7789/Driver/` | ST7789 具体外设协议、窗口、像素和面板初始化 |
+| `BSP/ST7789/Adapter/Port/` | `bsp_gpio_spi` 实例、GPIO Core 和 FreeRTOS OS 注入 |
+| `BSP/ST7789/Adapter/Wrapper/` | 面向 OS、Middleware、App 的显示接口 |
+| `BSP/ST7789/Handler/` | `bsp_display_handle` 生命周期、互斥访问和状态管理 |
+| `BSP/ST7789/Demo/` | 红/绿/蓝/白小色块 Driver Demo |
+| `BSP/ST7789/Adapter/Port/Src/bsp_gpio_spi.c` | 复用 W25Qxx 的 GPIO 模拟 SPI |
+| `Core/Src/gpio.c` | PA1/PA4/PA5/PA6/PA7、PB10 及 LED GPIO |
 
 ## 4. 构建与验证
 
@@ -184,8 +208,8 @@ cmake --build --preset Release -j 4
 
 | 构建 | RAM | Flash | 状态 |
 |---|---:|---:|---|
-| Debug `-O0 -g3` | 49,816 B / 128 KB | 463,140 B / 512 KB | 通过 |
-| Release `-Os` | 33,344 B / 128 KB | 237,708 B / 512 KB | 通过 |
+| Debug `-O0 -g3` | 57,056 B / 128 KB | 468,736 B / 512 KB | 通过 |
+| Release `-Os` | 56,976 B / 128 KB | 240,636 B / 512 KB | 通过 |
 
 ![[lvgl构建验证.svg|720]]
 
@@ -196,18 +220,77 @@ volatile uint32_t g_lvgl_flush_count;
 volatile uint32_t g_lvgl_last_flush_pixels;
 ```
 
-使用 J-Link 或调试器运行后，可观察 `g_lvgl_flush_count` 是否递增、`g_lvgl_last_flush_pixels` 是否出现有效区域像素数。这可以证明 LVGL 任务和 Flush Callback 运行；由于当前没有实体 LCD，不能把它等同于“屏幕已经显示”。
+本次 Debug ELF 已使用 J-Link V9 下载到 STM32F411CEU6。运行 15 s 后读取到：
 
-## 5. 真实 LCD 接入清单
+`g_freertos_heartbeat=15`、`g_freertos_scheduler_started=1`、
 
-当前 `.ioc`、HAL 配置和工程源码中没有可确认的 LCD 控制器、SPI、触摸或按键配置。接入实体屏幕时需要补齐：
+`g_lvgl_flush_count=5`、`g_lvgl_last_flush_pixels=4800`、
 
-- 确定控制器型号、分辨率、RGB565 字节序和扫描方向。
-- 由 BSP 初始化 GPIO、SPI、DMA、CS、DC、RESET 和背光。
-- 在 `lvgl_flush_cb` 中设置 LCD 窗口并发送区域像素；DMA 完成中断中调用 `lv_display_flush_ready`。
-- 如果有触摸/按键，新增 `lv_indev_create` 与 `read_cb`，把读取动作放在 BSP/OS 边界内。
-- 对 DMA 使用的 buffer 做内存对齐和 Cache 一致性处理；当前 STM32F411 无 D-Cache，仍需保留可移植边界。
-- 重新测量单帧耗时、Flush 带宽、GUI 任务栈水位和 LVGL 内存水位。
+`g_lvgl_last_flush_status=0`、FreeRTOS 调度器运行、CFSR=0。
+
+这些数值证明 LED 任务、LVGL 任务和 Flush Callback 已运行；最终文字和色块仍需以屏幕实物观察确认。
+
+## 5. ST7789 实际硬件接入
+
+硬件连接以用户提供的实际接线图为准：
+
+| LCD 信号 | MCU 引脚 | 工程位置 |
+|---|---|---|
+| LCD_RST | PB10 | `BSP/ST7789/Adapter/Port/Src/bsp_st7789_adapter_port.c` |
+| LCD_BLCAK | PA1 | 同上；当前高电平点亮 |
+| LCD_CS | PA4 | 同上；由 `bsp_gpio_spi` 实例管理 |
+| LCD_CLK | PA5 | `bsp_gpio_spi` 的 SCK |
+| LCD_DC | PA6 | Adapter Port |
+| LCD_MOSI | PA7 | `bsp_gpio_spi` 的 MOSI |
+| TP_INT | PB2 | 已记录，未实现 |
+| TP_RST | PA15 | 已记录，未实现 |
+| TP_SCL | PA8 | 已记录，未实现 |
+| TP_SDA | PB4 | 已记录，未实现 |
+
+ST7789 参数来自原工程 `st7789.h` 的 `USING_240X280` profile：240×280、rotation 0、Y offset 20。当前工程在 Adapter Port 中实例化参考工程的 `bsp_gpio_spi`，将 PA4/PA5/PA7 注入 CS/SCK/MOSI；触摸控制器型号/协议在提供的资料中未确认，因此只保留映射，不伪造触摸驱动。
+
+### 5.1 Driver、Handle、Adapter Port、Adapter Wrapper 契约
+
+本工程按参考工程的“依赖注入 + 实例注册”思路收敛为以下边界：
+
+| 模块 | 只负责什么 | 不应依赖什么 |
+|---|---|---|
+| `bsp_st7789_driver` | ST7789 命令、寄存器、窗口和像素协议 | HAL、FreeRTOS、LVGL |
+| `bsp_display_handle` | 显示实例生命周期、状态和互斥访问 | 具体 HAL、FreeRTOS 头文件 |
+| `Adapter Port` | 创建 `bsp_gpio_spi`、GPIO Core、FreeRTOS OS 表并注入 | LVGL/App 业务 |
+| `Adapter Wrapper` | 为 OS、Middleware、App 提供稳定的显示 API | 直接暴露底层 SPI 细节 |
+
+本次设计参考了以下实际工程：
+
+- `30_stm32f411ceu6_bsp_flash_platform/Bsp/W25Qxx/spi`：复用
+  `bsp_gpio_spi` 的 `spi_gpio_ops_t`、`spi_bus_t` 和发送接口。
+- `STM32F411CEU6_AHT21/BSP/AHT21/driver`：Driver 通过操作表接收底层
+  依赖。
+- `STM32F411CEU6_AHT21/BSP/AHT21/handler` 与
+  `28_STM32F411CEU6_Mpu6050/BSP/MPU6050/handler`：Handler/Handle
+  持有实例、状态和 OS 资源，避免把平台实现写进协议层。
+
+```mermaid
+flowchart LR
+    APP[LVGL Widget] --> PORT[Core/Src/lvgl_port.c]
+    PORT --> WRAPPER[Adapter Wrapper]
+    WRAPPER --> HANDLE[bsp_display_handle]
+    HANDLE --> DRIVER[ST7789 Driver]
+    PORT --> DRIVER
+    PORT --> HANDLE
+    PORT --> BUS[bsp_gpio_spi 实例]
+    BUS --> HAL[GPIO HAL]
+    HAL --> LCD[ST7789 240x280]
+```
+
+启动测试顺序：
+
+1. FreeRTOS 启动后创建 `display_init` 任务。
+2. Adapter Wrapper 通过 Port 注入 Core/OS，初始化 `bsp_display_handle` 和 ST7789，执行红/绿/蓝/白小色块 Demo。
+3. 初始化 LVGL Display、20 行 RGB565 Draw Buffer 和 GUI 任务。
+4. LVGL Flush 通过 Adapter Wrapper → Display Handle → Driver → GPIO-SPI 写入 ST7789；Flush 每行让出 1 tick，LED 任务每 1 s 翻转 PC13。
+
+![[st7789分层结构.svg|720]]
 
 ## 6. 常见问题
 
@@ -223,13 +306,22 @@ volatile uint32_t g_lvgl_last_flush_pixels;
 
 Debug 使用 `-O0`，LVGL 大量绘制代码会显著膨胀。本工程 Debug 为 463 KB，Release `-Os` 为 237 KB；产品空间评估应以 Release、实际字体和实际 Widget 配置为准。
 
-### 把虚拟 framebuffer 当成实体屏幕验证
+### 屏幕常亮红色、LED 不闪
 
-虚拟 framebuffer 只能证明 LVGL 核心、Tick、任务和 Flush 回调运行。只有接入真实 LCD 并观察实物画面，才算完成显示链路验收。
+排查顺序：
+
+1. 用 J-Link 读取 `g_lvgl_flush_count`、`g_lvgl_last_flush_status` 和 `g_freertos_heartbeat`。
+2. 若停在 HardFault，先读 CFSR 和异常栈；本次曾因启动前 SysTick 进入 FreeRTOS tick 修复。
+3. 若 `g_freertos_heartbeat=0` 且 CFSR=0，检查任务是否栈溢出或高优先级任务是否没有阻塞。本次 `pdMS_TO_TICKS(5)` 在 100 Hz 下为 0，已改为 10 ms。
+4. 不要在调度器启动前调用 `xSemaphoreCreateMutex`；本次 Display Handle 初始化已移动到 `display_init` 任务。
+
+### 触摸暂未实现
+
+图片给出了 TP_INT/TP_RST/TP_SCL/TP_SDA 引脚，但没有触摸 IC 型号、寄存器协议和时序说明。后续应在 `BSP/Touch/Driver`、Adapter Port/Wrapper 和 LVGL `read_cb` 中按真实控制器补齐。
 
 ## 7. 总结
 
-LVGL 移植的核心不是把源码复制进工程，而是建立版本、配置、OS、Tick、Display、Buffer、Flush 和 Input 的边界。本工程已在 `lvgl` 分支完成 LVGL v9.6.0-dev + FreeRTOS 的可构建集成，并用 RGB565 虚拟 framebuffer 验证渲染链路。下一步只需把 `lvgl_flush_cb` 的虚拟复制替换为具体 LCD BSP/DMA，补上输入设备后再做板上画面和性能验收。
+LVGL 移植的核心不是把源码复制进工程，而是建立版本、配置、OS、Tick、Display、Buffer、Flush 和 Input 的边界。本工程已在 `lvgl` 分支完成 LVGL v9.6.0-dev + FreeRTOS + ST7789 240×280 的真实 SPI 刷屏闭环，并用 J-Link 证明任务和 Flush 状态正常。下一步是按触摸 IC 资料补齐 TP 输入层，再评估 SPI DMA。
 
 ## 8. 参考资料
 

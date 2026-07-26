@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" viewBox="0 0 900 420">
+  <rect width="900" height="420" fill="#fffdf7"/>
+  <style>
+    .title{font:700 23px sans-serif;fill:#17324d}.box{stroke:#355c7d;stroke-width:2;rx:10}.t{font:700 16px sans-serif;fill:#17324d}.s{font:14px sans-serif;fill:#263238}.arrow{stroke:#355c7d;stroke-width:3;fill:none;marker-end:url(#a)}
+  </style>
+  <defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0 L9 3 L0 6 Z" fill="#355c7d"/></marker></defs>
+  <text x="32" y="38" class="title">ST7789 + LVGL 分层与依赖注入</text>
+  <rect x="48" y="80" width="150" height="90" class="box" fill="#ffe5b4"/><text x="98" y="115" class="t">APP</text><text x="68" y="143" class="s">LVGL Widget</text>
+  <rect x="235" y="80" width="170" height="90" class="box" fill="#d8f3dc"/><text x="266" y="115" class="t">Middlewares</text><text x="263" y="143" class="s">lvgl_port.c</text>
+  <rect x="442" y="80" width="170" height="90" class="box" fill="#dbeafe"/><text x="467" y="115" class="t">Adapter Wrapper</text><text x="466" y="143" class="s">上层显示接口</text>
+  <rect x="649" y="80" width="190" height="90" class="box" fill="#e2e8f0"/><text x="695" y="115" class="t">Handle</text><text x="668" y="143" class="s">bsp_display_handle</text>
+  <path d="M198 125 H235" class="arrow"/><path d="M405 125 H442" class="arrow"/><path d="M612 125 H649" class="arrow"/>
+  <rect x="80" y="255" width="190" height="90" class="box" fill="#f8d7da"/><text x="145" y="290" class="t">Driver</text><text x="104" y="318" class="s">ST7789 command protocol</text>
+  <rect x="355" y="255" width="220" height="90" class="box" fill="#cfe8ff"/><text x="416" y="290" class="t">Adapter Port</text><text x="375" y="318" class="s">注入 Core / OS</text>
+  <rect x="660" y="255" width="190" height="90" class="box" fill="#cfe8ff"/><text x="724" y="290" class="t">Core</text><text x="681" y="318" class="s">bsp_gpio_spi + GPIO</text>
+  <path d="M744 170 C744 220 750 220 750 255" class="arrow"/><path d="M649 170 C520 210 190 215 190 255" class="arrow"/>
+  <path d="M575 300 H660" class="arrow"/><path d="M355 300 H270" class="arrow"/>
+  <text x="48" y="392" class="s">上层只依赖 Wrapper；Driver 不依赖 HAL/FreeRTOS；Port 是唯一 Core/OS 注入点</text>
+</svg>
