@@ -211,3 +211,197 @@ A：不是。本工程必须同时读取 ELF 和 `.map`；当前 Flash 89.39%，
 - LVGL 端口：`Core/Src/lvgl_port.c`
 - 构建：`cmake/stm32cubemx/CMakeLists.txt`
 - J-Link 运行检查：`tools/jlink_gui_guider_runtime_check.jlink`
+
+## 13. 工程优化记录（2026-07-27）
+
+### 13.1 优化范围与版本锁定
+
+本轮优化针对 `gui-guider` 分支，目标版本固定为 LVGL `9.6.0-dev`：
+
+```text
+LVGL_VERSION_MAJOR 9
+LVGL_VERSION_MINOR 6
+LVGL_VERSION_PATCH 0
+LVGL_VERSION_INFO  "dev"
+```
+
+LVGL 9 使用 `LV_USE_IMAGE`，不是 v8/v9 混用的 `LV_USE_IMAGES`。显示对象使用：
+
+```c
+LV_COLOR_DEPTH 16
+LV_USE_DRAW_SW 1
+LV_DISPLAY_RENDER_MODE_PARTIAL
+```
+
+当前 `lv_conf.h` MD5：
+
+```text
+2AF0490E72B7D1F84A58631A00792105
+```
+
+### 13.2 Gate 1：LVGL 配置裁剪
+
+`Middlewares/LVGL/Config/lv_conf.h` 已完成第一轮白名单配置：
+
+- 保留 `LV_USE_IMAGE`、`LV_USE_LABEL`、软件绘制、FreeRTOS OSAL 和 Task Notification；
+- 关闭未使用的控件、主题、Grid、Observer、文件系统和图片解码器；
+- 关闭全部内置 Montserrat 8～48 字体；
+- 默认字体改为 `lv_font_alimama_16`；
+- GUI Guider 页面继续显式使用 `lv_font_alimama_12` 和 `lv_font_alimama_16`；
+- Debug 保留 Sysmon、内存/性能监控和必要断言；
+- Release 关闭 Log、Sysmon、Perf Monitor、Mem Monitor 和断言；
+- `LV_MEM_SIZE` 保持 16 KB，尚未降到 12 KB。
+
+GUI Guider 静态扫描结果显示，当前页面实际依赖 Image、Label、动画核心、对象事件、触摸手势和项目自有 `lv_analogclock_*` facade。扫描结果保存于工程：
+
+```text
+reports/gui-guider-api-symbols.txt
+```
+
+### 13.3 Gate 2：容量结果
+
+优化前基线为 Release Flash 468684 B（89.39%）。配置裁剪和链接回收后：
+
+| 构建 | text | data | bss | 链接 Flash | 链接 RAM |
+|---|---:|---:|---:|---:|---:|
+| Debug | 420060 B | 100 B | 54700 B | 420168 / 524288 = 80.14% | 54792 / 131072 = 41.80% |
+| Release | 402548 B | 96 B | 54688 B | 402652 / 524288 = 76.80% | 54776 / 131072 = 41.79% |
+
+Release 已达到 Flash 小于 85%、RAM 小于 60%硬目标。最大 Flash 符号仍为：
+
+```text
+_biaopan1_alpha_240x240_map  0x2a300 = 172800 B
+```
+
+该数值是 Flash `.rodata` 图片资源，不是运行时 RAM 峰值。其他主要 RAM 符号为：
+
+```text
+ucHeap             0x6000 = 24 KB
+work_mem_int       0x4000 = 16 KB
+s_lvgl_draw_buffer 0x2580 = 9600 B
+```
+
+### 13.4 显示端口优化
+
+由于 Gate 1 已达到 Flash 硬目标，本轮保留 20 行 partial buffer，不增加 40 行缓冲的 9600 B RAM 成本。
+
+显示端口已完成低 RAM 路径优化：
+
+1. 删除额外 `s_lvgl_tx_row` 作为默认路径；
+2. 在 LVGL draw buffer 内原地执行 RGB565 高低字节交换；
+3. 每个刷新区域只调用一次 ST7789 Wrapper；
+4. 依赖现有 Adapter Port 的同步 DMA 完成后再执行 `lv_display_flush_ready()`；
+5. 未修改 SPI 频率、MADCTL、屏幕偏移和 BSP 公共接口；
+6. 保留 `LVGL_DISPLAY_OPTIMIZED` 编译期回滚宏；
+7. 新增 Flush 起始时间、耗时、字节数、像素数和状态计数。
+
+```mermaid
+flowchart TD
+    R[LVGL partial draw buffer 240x20 RGB565] --> S[原地 swap16]
+    S --> W[ST7789 write_area 一次区域发送]
+    W --> D[SPI1 TX DMA]
+    D --> C[DMA完成信号]
+    C --> F[lv_display_flush_ready]
+```
+
+由于当前没有新的板上 Flush 耗时和摄像头画面证据，`≤5 ms` 和 tearing 结果暂记为“尚未板上验证”，不能用编译结果代替。
+
+### 13.5 LVGL 输入、任务和 OS 优化
+
+`lvgl_port.c` 已删除手动 `lv_indev_read()`，改由 LVGL v9 输入定时器采样：
+
+```c
+lv_timer_set_period(lv_indev_get_read_timer(s_touch_indev), 20U);
+```
+
+LVGL 任务使用 `lv_timer_handler()` 返回值进行 1～20 ms 调度限制；由于 FreeRTOS Tick 为 100 Hz，实际阻塞时间按至少 1 tick 处理。LVGL 任务优先级调整为 `tskIDLE_PRIORITY + 2`，高于普通业务任务，DMA 仍由中断完成。
+
+新增运行时诊断变量：
+
+- LVGL handler 次数和下次定时器时间；
+- Flush 时间戳、耗时、像素数、字节数和状态；
+- FreeRTOS 当前/最小剩余堆；
+- LVGL 内存池剩余和最大使用量（Debug）；
+- LVGL 任务 Stack High Water Mark；
+- 触摸读取和按下计数。
+
+FreeRTOS 功能保持完整，未删除 Event Groups、Stream Buffers、Counting Semaphores、Software Timer 或 Task Notification。TIM1 100 Hz OS Tick 保持不变，SysTick 继续只维护 HAL Tick。
+
+### 13.6 Release LTO 与异常修复
+
+Release 已启用：
+
+```text
+-Os -g0 -flto
+-fno-unwind-tables
+-fno-asynchronous-unwind-tables
+--gc-sections
+--specs=nano.specs
+```
+
+首次 LTO 链接发现 FreeRTOS 的 `SVC_Handler/PendSV_Handler` 通过内联汇编间接引用 `vPortSVCHandler/xPortPendSVHandler`，LTO 无法识别该 C 引用。最终通过 Release 链接选项保留两个外部符号：
+
+```text
+-Wl,--undefined=vPortSVCHandler
+-Wl,--undefined=xPortPendSVHandler
+```
+
+修复后 Release 链接通过。若后续出现 HardFault，排查顺序为：关闭 LTO 复现、检查链接脚本布局、检查 `volatile` 寄存器访问、再检查 GDB/objdump 符号可见性。Debug 构建不启用 LTO。
+
+### 13.7 基线与证据文件
+
+新增脚本：
+
+```text
+scripts/lvgl_baseline.ps1
+```
+
+脚本记录 Git HEAD、分支、LVGL 版本、`lv_conf.h` MD5、GCC 版本、ELF size、map 和 Top 30 符号。当前报告目录：
+
+```text
+reports/lvgl-debug/
+reports/lvgl-release/
+```
+
+当前已具备的证据：
+
+- LVGL 版本和配置快照；
+- `LV_DISPLAY_RENDER_MODE_PARTIAL` 配置；
+- draw buffer 地址/大小的 ELF/map 证据；
+- Debug/Release ARM GCC 构建输出；
+- Release LTO 编译参数；
+- API 静态扫描清单；
+- Flash/RAM 和 Top 30 符号结果。
+
+尚未具备的板上证据：
+
+- 一次实际 Flush 时间戳和耗时；
+- DMA 启动/完成串口日志片段；
+- 20 ms 触摸采样日志；
+- 快速滑动 tearing 摄像头截图；
+- 30 分钟堆、栈和定时器稳定性记录。
+
+### 13.8 优化验收状态
+
+```mermaid
+flowchart LR
+    A[Gate 1 配置裁剪] -->|通过| B[Gate 2 容量与LTO]
+    B -->|通过| C[Gate 3 显示与输入板测]
+    C -->|待验证| D[Gate 4 30分钟运行]
+    C -->|显示异常| R[LVGL_DISPLAY_OPTIMIZED=0回滚]
+```
+
+| 项目 | 状态 |
+|---|---|
+| LVGL 9.6.0-dev 锁定 | 已完成 |
+| Render Mode Partial | 已完成 |
+| `lv_conf.h` 裁剪 | 已完成 |
+| Debug 编译 | 已完成 |
+| Release LTO 编译/链接 | 已完成 |
+| Flash <85% | 已完成，76.80% |
+| RAM <60% | 已完成，41.79% |
+| 原地字节序和单区域 DMA | 静态完成，板上耗时待验证 |
+| 20 ms 触摸采样 | 代码完成，板上日志待验证 |
+| 指针每秒更新 | 既有 TIM1 运行证据已完成 |
+| Flush 视觉、触摸和 tearing | 尚未验证 |
+| 30 分钟稳定运行 | 尚未验证 |
