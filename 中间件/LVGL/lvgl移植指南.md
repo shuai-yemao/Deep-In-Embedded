@@ -403,6 +403,99 @@ Debug 使用 `-O0`，LVGL 大量绘制代码会显著膨胀。本工程 Debug �
 
 图片给出了 TP_INT/TP_RST/TP_SCL/TP_SDA 引脚，但没有触摸 IC 型号、寄存器协议和时序说明。后续应在 `BSP/Touch/Driver`、Adapter Port/Wrapper 和 LVGL `read_cb` 中按真实控制器补齐。
 
+### 移植配置与运行闭环常见误区
+
+> 本节记录 LVGL 移植学习过程中暴露出的易错点。结论基于 LVGL v9.6.0-dev 源码与本地移植指南，尚未新增板上实测。
+
+#### 1. `flush_cb` 的意义
+
+`flush_cb` 不是 LCD 驱动本身，而是 LVGL 与具体显示硬件之间的适配点。LVGL 只负责把某个区域渲染成像素数据，移植层负责把 `area + px_map` 送到真实屏幕。
+
+- 现象：误以为 LVGL 应该直接操作 LCD。
+- 根因：没有区分图形库职责和 BSP/Driver 职责。
+- 修复：让 `flush_cb` 调用 Adapter Wrapper/BSP，不让 LVGL 直接依赖 HAL、SPI、LCD Driver。
+- 验证：确认 `flush_cb` 被调用，且能把指定区域写入屏幕。
+
+代码证据：`examples/porting/lv_port_disp_template.c:63`、`examples/porting/lv_port_disp_template.c:124`
+
+#### 2. `lv_display_flush_ready()` 的意义
+
+`lv_display_flush_ready()` 不是启动 DMA，也不是通知 OS 可以刷新。它的意义是通知 LVGL：本次 flush 对应的像素区域已经传输完成，绘制缓冲区可以继续被 LVGL 使用。
+
+- 现象：首帧后界面卡住、动画不动、后续局部刷新不再发生。
+- 根因：DMA 完成后没有调用 `lv_display_flush_ready()`，LVGL 仍认为上一轮 flush 没结束。
+- 修复：同步传输完成后立即调用；异步 DMA 则在 DMA complete 中断或对应任务上下文中调用。
+- 验证：统计 flush 次数持续增长，页面切换或动画能继续刷新。
+
+代码证据：`examples/porting/lv_port_disp_template.c:140`、`src/display/lv_display.c:672`
+
+#### 3. 颜色深度和颜色格式配置错误
+
+`LV_COLOR_DEPTH` 决定 LVGL 内部像素数据编码，必须和 LCD 接收格式、`lv_display_set_color_format()`、Flush 中的数据解释一致。
+
+- 现象：颜色不对、红蓝反、花屏、画面偏移、刷新数据长度异常。
+- 根因：LCD 实际 RGB565，但 LVGL 颜色深度或 color format 配置不匹配。
+- 修复：确认 LCD 像素格式、每像素字节数、大小端顺序、stride 和 flush 转换逻辑。
+- 验证：显示红、绿、蓝、白纯色块，观察颜色和区域是否正确。
+
+代码证据：`lv_conf_template.h:131`
+
+#### 4. `LV_DEF_REFR_PERIOD` 不是 LCD 硬件刷新率
+
+`LV_DEF_REFR_PERIOD` 控制 LVGL 刷新定时器周期，即多久检查一次 invalid area 并触发渲染/flush。LCD 的扫描刷新、SPI/DMA 传输速度、TE 信号属于硬件和驱动层。
+
+- 现象：误把 LVGL 刷新周期当成屏幕硬件刷新率。
+- 根因：没有区分 LVGL 调度周期与 LCD 面板刷新机制。
+- 修复：用 `LV_DEF_REFR_PERIOD` 控制 LVGL 任务节奏，用硬件驱动参数控制真实屏幕传输。
+- 验证：观察 `lv_timer_handler()` 周期、flush 调用周期和实际 SPI/DMA 耗时。
+
+代码证据：`lv_conf_template.h:142`、`src/display/lv_display.c:115`
+
+#### 5. `lv_timer_handler()` 与 `lv_tick_inc()` 的关系
+
+`lv_tick_inc(ms)` 提供时间基准，`lv_timer_handler()` 根据时间基准执行到期任务，包括刷新、输入扫描、动画、timer callback 和异步任务。
+
+- 现象：界面不刷新、触摸无响应、动画不动、timer callback 不执行。
+- 根因：只创建 UI，没有周期调用 `lv_timer_handler()`；或没有稳定 tick 来源。
+- 修复：定时中断/系统 tick 调用 `lv_tick_inc(1)`，主循环或 GUI 任务周期调用 `lv_timer_handler()`。
+- 验证：确认 tick 单调递增，`lv_timer_handler()` 周期运行，`flush_cb` 能被触发。
+
+代码证据：`lv_conf_template.h:2336`、`lv_conf_template.h:2341`
+
+#### 6. 输入 `read_cb` 的边界
+
+`read_cb` 只负责把硬件输入状态转换成 LVGL 输入数据，例如 pressed/released、坐标、按键值或编码器增量。它不应直接写 APP 业务逻辑。
+
+- 现象：触摸驱动里直接切页面或修改业务状态。
+- 根因：APP 与 Middleware 边界混乱，输入移植层反向依赖业务。
+- 修复：`read_cb` 只填 `lv_indev_data_t`；页面切换和业务状态修改放到事件回调或 APP 状态机。
+- 验证：更换触摸 IC 或输入来源时，不需要修改 APP 页面逻辑。
+
+代码证据：`examples/porting/lv_port_indev_template.c:91`
+
+#### 7. RTOS 配置不等于任意任务可调用 LVGL
+
+`LV_USE_OS` 需要和实际 OS 匹配，用于 LVGL 的锁、线程、等待、同步等 OS 协作。但它不等于所有任务都能随意调用 LVGL API。
+
+- 现象：多个任务直接操作对象树，偶发卡死、断言、显示异常。
+- 根因：LVGL 对象树和刷新状态不是默认任意并发安全。
+- 修复：明确 GUI 主任务；其他任务通过队列/事件投递到 GUI 任务，或在规定范围内使用 LVGL lock。
+- 验证：压力测试页面切换、输入事件、后台任务消息和长时间刷新。
+
+代码证据：`lv_conf_template.h:102`
+
+#### 8. 屏幕完全不刷新时的排查顺序
+
+优先确认 LVGL 运行闭环，再确认显示移植细节：
+
+1. `lv_timer_handler()` 是否周期执行。
+2. `lv_tick_inc()` 或 tick callback 是否稳定提供时间。
+3. `flush_cb` 是否被调用。
+4. `lv_display_flush_ready()` 是否在传输完成后调用。
+5. buffer、颜色格式、分辨率、offset、stride 是否匹配。
+
+一句话总结：先确认 LVGL 在跑，再确认它有画，再确认 port 层送完，最后查像素格式和硬件参数。
+
 ## 7. 总结
 
 LVGL 移植的核心不是把源码复制进工程，而是建立版本、配置、OS、Tick、Display、Buffer、Flush 和 Input 的边界。本工程已在 `lvgl` 分支完成 LVGL v9.6.0-dev + FreeRTOS + ST7789 240×280 的真实 SPI 刷屏闭环，并用 J-Link 证明任务和 Flush 状态正常。下一步是按触摸 IC 资料补齐 TP 输入层，再评估 SPI DMA。
