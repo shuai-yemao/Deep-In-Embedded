@@ -267,7 +267,7 @@ reports/gui-guider-api-symbols.txt
 | Debug | 420060 B | 100 B | 54700 B | 420168 / 524288 = 80.14% | 54792 / 131072 = 41.80% |
 | Release | 402548 B | 96 B | 54688 B | 402652 / 524288 = 76.80% | 54776 / 131072 = 41.79% |
 
-Release 已达到 Flash 小于 85%、RAM 小于 60%硬目标。最大 Flash 符号仍为：
+Release 已达到 Flash 小于 85%、RAM 小于 60% 硬目标。最大 Flash 符号仍为：
 
 ```text
 _biaopan1_alpha_240x240_map  0x2a300 = 172800 B
@@ -419,6 +419,7 @@ flowchart LR
 ### 14.2 Flush、DMA 和异常寄存器
 
 J-Link 通过 ELF 符号地址读取运行时变量，报告文件为：
+
 `reports/lvgl-board-30min-jlink.log`。
 
 约 5 分钟的连续采样中：
