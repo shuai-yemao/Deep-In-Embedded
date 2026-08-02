@@ -1,0 +1,39 @@
+<svg width="820" height="560" xmlns="http://www.w3.org/2000/svg"
+     font-family="Consolas, monospace" font-size="13">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#888"/>
+    </marker>
+  </defs>
+
+  <rect x="40" y="30" width="740" height="70" rx="6" fill="#eef2fb" stroke="#4a6fb5" stroke-width="2"/>
+  <text x="60" y="55" fill="#4a6fb5" font-weight="bold">App / LVGL</text>
+  <text x="60" y="78" fill="#333">lvgl_port.c · User_Init.c — LVGL indev 轮询读取触摸快照 / 装配入口</text>
+
+  <rect x="40" y="120" width="740" height="60" rx="6" fill="#f5f0e8" stroke="#b5894a" stroke-width="2"/>
+  <text x="60" y="145" fill="#b5894a" font-weight="bold">Wrapper</text>
+  <text x="60" y="168" fill="#333">bsp_adapter_wrapper_touch — 静态函数表注入，App 免持有实例</text>
+
+  <rect x="40" y="200" width="740" height="70" rx="6" fill="#f0f8f0" stroke="#4a9b5a" stroke-width="2"/>
+  <text x="60" y="225" fill="#4a9b5a" font-weight="bold">Handle（线程管理）</text>
+  <text x="60" y="248" fill="#333">bsp_touch_handle — 事件队列 worker · 快照缓存 · ISR 桥接 · 20ms 轮询兜底</text>
+
+  <rect x="40" y="290" width="740" height="80" rx="6" fill="#fdeef0" stroke="#c0504d" stroke-width="2"/>
+  <text x="60" y="315" fill="#c0504d" font-weight="bold">Driver</text>
+  <text x="60" y="338" fill="#333">bsp_cst816t_driver — 复位时序 · CHIP_ID 探测 · IRQ_CTL · 帧解码 · 坐标映射 · dma_pending 状态机</text>
+  <text x="60" y="358" fill="#888">bsp_cst816t_driver_inst()  ← 本层唯一构造函数</text>
+
+  <rect x="40" y="390" width="740" height="90" rx="6" fill="#f0f0f0" stroke="#777" stroke-width="2" stroke-dasharray="6,4"/>
+  <text x="60" y="415" fill="#555" font-weight="bold">Adapter Port（南向注入 · 硬件/OS 绑定）</text>
+  <text x="60" y="438" fill="#333">bsp_adapter_port_touch — I2C3(0x15) · PA15 RST · PB2 EXTI · I2C3 RX-DMA · osal 队列/线程/临界区</text>
+  <text x="60" y="462" fill="#888">HAL / FreeRTOS（经 osal 抽象）</text>
+
+  <line x1="410" y1="100" x2="410" y2="120" stroke="#888" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="410" y1="180" x2="410" y2="200" stroke="#888" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="410" y1="270" x2="410" y2="290" stroke="#888" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="410" y1="370" x2="410" y2="390" stroke="#888" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="425" y="112" fill="#888">pf_get_latest</text>
+  <text x="425" y="192" fill="#888">pf_register_driver / pf_*_from_isr</text>
+  <text x="425" y="282" fill="#888">pf_start_read / pf_read_sync / pf_complete_read / pf_abort_read</text>
+  <text x="425" y="382" fill="#888">core_ops 注入：p_iic / p_yield / p_reset</text>
+</svg>
