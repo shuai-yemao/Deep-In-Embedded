@@ -27,10 +27,10 @@ react-components-namespace: bsp.cst816t
 
 > 从已扫描路径中定位的两处使用：
 
-1. **装配建链**：`Bsp/porting/drv_adapter_port_touch/src/bsp_adapter_port_touch.c:637` 构造 Driver、注册到 Handle、启动 worker，建立"PB2 EXTI → 事件队列 → worker → 快照缓存"整条数据链路。
+1. **装配建链**：`Bsp/porting/drv_adapter_port_touch/src/bsp_adapter_port_touch.c:637` 构造 Driver、注册到 Handle、启动 worker，建立 "PB2 EXTI → 事件队列 → worker → 快照缓存 " 整条数据链路。
 2. **LVGL 输入设备**：`Core/Src/lvgl_port.c:45` 经 Wrapper `bsp_touch_adapter_wrapper_get_latest()` 非阻塞读取触摸快照，驱动点击/滑动交互（输入角色；显示输出由 ST7789 承担）。
 
-> 角色区分：CST816T 给 LVGL 的是**输入（indev）**能力——LVGL 从它"读"触摸；ST7789 是**输出**端——LVGL 把渲染好的画面"写"给屏幕。
+> 角色区分：CST816T 给 LVGL 的是**输入（indev）**能力——LVGL 从它 " 读 " 触摸；ST7789 是**输出**出**qe}输出**端——LVGL 把渲染好的画面 " 写 " 给屏幕。
 
 ## 核心逻辑/原理
 
@@ -120,7 +120,7 @@ sequenceDiagram
 
 - **拉低 5ms** = 复位脉冲宽度（进入复位态）；**释放后 50ms** = boot 稳定时间（期间不应访问）。
 - CHIP_ID 探测只作 I2C 通路可用性检查（driver.c:101-105 只判 status），**不校验具体 ID 值**（兼容不同批次）。
-- 过早访问 → 从机未 boot 不 ACK → I2C 传输超时 → 初始化失败（而非"读到错误 ID"——本驱动根本不比对 ID 值）。
+- 过早访问 → 从机未 boot 不 ACK → I2C 传输超时 → 初始化失败（而非 " 读到错误 ID"——本驱动根本不比对 ID 值）。
 
 ### 4. 机制三：帧解码与 12bit 坐标拼接
 
@@ -147,7 +147,7 @@ graph LR
 ### 6. 机制五：同步读 vs DMA 读 + dma_pending 状态机
 
 - **同步读**（driver.c:216）：两步——先读 FINGER_NUM，有触摸才读坐标 4 字节；无触摸跳过坐标读**省流量**（触摸事件稀疏，多数轮询周期无触摸）；`memset` + 解码器无条件置 `x=y=0` 保证无残留。
-- **DMA 读**（driver.c:144/261/285）：start 置 `dma_pending=true` → complete/abort 清 false → 入口检查拒绝并发。`dma_pending` 是"单次传输互斥锁"，保证同步与 DMA 读不争用 I2C3 总线；被拒返回 `BSP_CST816T_STATUS_STATE`（忙碌拒绝，非 I2C 传输失败）。
+- **DMA 读**（driver.c:144/261/285）：start 置 `dma_pending=true` → complete/abort 清 false → 入口检查拒绝并发。`dma_pending` 是 " 单次传输互斥锁 "，保证同步与 DMA 读不争用 I2C3 总线；被拒返回 `BSP_CST816T_STATUS_STATE`（忙碌拒绝，非 I2C 传输失败）。
 
 ```mermaid
 graph TD
@@ -168,7 +168,7 @@ graph TD
 
 ### 7. 机制六：中断配置
 
-`IRQ_CTL(0xFA)=0x50`（宏 `BSP_CST816T_IRQ_CTL_TOUCH_MOTION`）使能"触摸 + 移动"两类事件位，任一发生芯片拉低 INT（PB2 下降沿 → EXTI）。配 `0x00` 则 EXTI 不触发，但 Handle 层 20ms 轮询兜底仍可检测触摸（50Hz）。
+`IRQ_CTL(0xFA)=0x50`（宏 `BSP_CST816T_IRQ_CTL_TOUCH_MOTION`）使能 " 触摸 + 移动 " 两类事件位，任一发生芯片拉低 INT（PB2 下降沿 → EXTI）。配 `0x00` 则 EXTI 不触发，但 Handle 层 20ms 轮询兜底仍可检测触摸（50Hz）。
 
 ## 🔑 关键代码片段：同步读 + DMA 状态机
 
@@ -263,7 +263,7 @@ static bsp_cst816t_status_t driver_abort_read(bsp_cst816t_driver_t *p_self)
 | 坐标 profile | 240×280、MIRROR_X=1、SWAP_XY=0、offset=0 | config.h:17-23 |
 | 状态码 | OK / ARGUMENT / IO / STATE | driver.h:32-38 |
 | 南向接口 | p_iic / p_yield / p_reset（共 4+1+1 个函数指针） | driver.h:56-107 |
-| 中断配置 | IRQ_CTL=0x50：触摸+移动 → INT 低脉冲 | config.h:35 |
+| 中断配置 | IRQ_CTL=0x50：触摸 + 移动 → INT 低脉冲 | config.h:35 |
 
 ## 实际操作步骤
 
@@ -285,22 +285,26 @@ static bsp_cst816t_status_t driver_abort_read(bsp_cst816t_driver_t *p_self)
 | 组合 DMA 帧读取停滞 | 板级调试曾现 I2C3 RX-DMA 组合读停滞（根因未完全定位） | `bsp_touch_handle.c:404` 设 `dma_enabled=false` 走两步同步读 |
 | 初始化失败/传输超时 | 复位后 <50ms 过早访问，从机未 boot 不 ACK | 保证 boot 时序；driver.c:105 超时返回非 OK |
 | 触摸坐标方向偏 | `MIRROR_X` / `SWAP_XY` 与面板贴装方向不匹配 | 调整 config.h:21-23 编译期宏 |
-| DMA 停滞无恢复兜底 | `dma_pending` 悬挂 → 读全被 STATE 拒绝 → 触摸永久失效（系统不死机，FreeRTOS 照常运行，死的是 I2C3+触摸这一路） | 必须有 abort/recover 兜底 |
+| DMA 停滞无恢复兜底 | `dma_pending` 悬挂 → 读全被 STATE 拒绝 → 触摸永久失效（系统不死机，FreeRTOS 照常运行，死的是 I2C3+ 触摸这一路） | 必须有 abort/recover 兜底 |
 
 ## 💬 Q&A
 
 ### 🟢 基础
 
-#### Q1: 为什么 12bit 坐标要"高4位+低8位"拼接？
+#### Q1: 为什么 12bit 坐标要 " 高 4 位 + 低 8 位 " 拼接？
 
 **用户原答：** 根据寄存器描述，x 坐标由高 4 位和低 8 位组成。
+
 **修正后理解：** 芯片触摸 ADC 输出 12bit 分辨率（2^12=4096 级），坐标分存于高字节低 4 位 + 低字节全 8 位；原始分辨率与显示范围无关，映射阶段才钳位。
+
 **证据：** driver.c:187-190；config.h:31-36
 
 #### Q2: `dma_pending` 标志扮演什么角色？
 
 **用户原答：** 告诉我们 DMA 读取状态，读取开始置位、接收清零，读取期间再次读取返回失败。
-**修正后理解：** "单次传输互斥锁"——start 置位、complete/abort 清零、入口检查拒绝并发（返回 STATE），保证同步与 DMA 读不争用 I2C3 总线。
+
+**修正后理解：** " 单次传输互斥锁 "——start 置位、complete/abort 清零、入口检查拒绝并发（返回 STATE），保证同步与 DMA 读不争用 I2C3 总线。
+
 **证据：** driver.c:152/161/274/293
 
 ### 🟡 进阶
@@ -308,13 +312,17 @@ static bsp_cst816t_status_t driver_abort_read(bsp_cst816t_driver_t *p_self)
 #### Q3: 同步读为什么先读状态、有触摸才读坐标？
 
 **用户原答：** 保存外设正常状态能读出正确数据，多了一层异常判断。
+
 **修正后理解：** 主要目的不是异常判断而是省流量——触摸事件稀疏，多数轮询周期无触摸，只读 1 字节状态省去 4 字节坐标读；`memset` 保证无触摸时坐标归零。
+
 **证据：** driver.c:216-252
 
 #### Q4: IRQ_CTL=0x00 时 EXTI 不触发，触摸还能检测吗？
 
 **用户原答：** 能，系统周期性轮询检查。
-**修正后理解：** 能。worker 队列接收 20ms 超时 → 轮询兜底路径 → 50Hz 检测；这就是 Handle 层"PB2 无可观测边沿时轮询作为兜底"的设计。
+
+**修正后理解：** 能。worker 队列接收 20ms 超时 → 轮询兜底路径 → 50Hz 检测；这就是 Handle 层 "PB2 无可观测边沿时轮询作为兜底 " 的设计。
+
 **证据：** bsp_touch_handle.c:30,178-193
 
 ### 🔴 困难
@@ -322,13 +330,17 @@ static bsp_cst816t_status_t driver_abort_read(bsp_cst816t_driver_t *p_self)
 #### Q5: 镜像公式 `(limit-1)-value` 的数学意义是什么？
 
 **用户原答：** 防止有符号运算强制转化巨大数值；进行了 % 操作。
+
 **修正后理解：** 坐标轴翻转（减法映射，非取模）：0↔limit-1 区间反转 180°，用于面板贴装方向与屏幕相反时校正；例 limit=240，value=10 → 229。
+
 **证据：** driver.c:54-70；config.h:21
 
 #### Q6: DMA 停滞且无恢复兜底，最终现象是什么？
 
 **用户原答：** 功能无法使用，没有错误处理让系统死机。
-**修正后理解：** 触摸链路永久失效（dma_pending 悬挂 → 读全被 STATE 拒绝）；但系统不死机，FreeRTOS 调度器照常运行，死的是 I2C3+触摸这一路——因此必须有 abort/recover 兜底。
+
+**修正后理解：** 触摸链路永久失效（dma_pending 悬挂 → 读全被 STATE 拒绝）；但系统不死机，FreeRTOS 调度器照常运行，死的是 I2C3+ 触摸这一路——因此必须有 abort/recover 兜底。
+
 **证据：** driver.c:285-300；bsp_touch_handle.c:148-158
 
 ## 📋 总结

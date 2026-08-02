@@ -7,17 +7,17 @@ react-components-namespace: bsp.cst816t.handle
 
 # 📖 引言
 
-> Handler 位于 Driver 之上，通过事件队列与 worker 线程统一管理触摸类外设的 ISR→任务上下文桥接、20ms 轮询兜底、快照缓存与生命周期，将"数据从哪来、何时处理、交给谁"的调度逻辑从芯片驱动中剥离。
+> Handler 位于 Driver 之上，通过事件队列与 worker 线程统一管理触摸类外设的 ISR→任务上下文桥接、20ms 轮询兜底、快照缓存与生命周期，将 " 数据从哪来、何时处理、交给谁 " 的调度逻辑从芯片驱动中剥离。
 
 ---
 
 # 📝 CST816T handle 文件的设计思路
 
-> 一句话定义：Handle 对"触摸"这一类外设做统一管理——创建并使用 worker 线程、事件队列与快照缓存，桥接 ISR→任务上下文，并管理 Driver 注册与生命周期；不负责具体协议/硬件实现（属 Driver）。
+> 一句话定义：Handle 对 " 触摸 " 这一类外设做统一管理——创建并使用 worker 线程、事件队列与快照缓存，桥接 ISR→任务上下文，并管理 Driver 注册与生命周期；不负责具体协议/硬件实现（属 Driver）。
 
 ## 实际意义
 
-> 无 Handle 时应用层需自建线程/队列/信号量、自管 EXTI/DMA 回调与 ISR→任务数据搬运，每个消费方重复一套；最危险的是在 ISR 里做 I2C 解码（阻塞 SysTick）；Handle 将"ISR 只入队、worker 解码"固化为通用骨架。
+> 无 Handle 时应用层需自建线程/队列/信号量、自管 EXTI/DMA 回调与 ISR→任务数据搬运，每个消费方重复一套；最危险的是在 ISR 里做 I2C 解码（阻塞 SysTick）；Handle 将 "ISR 只入队、worker 解码 " 固化为通用骨架。
 
 ## 应用场景
 
@@ -28,7 +28,7 @@ react-components-namespace: bsp.cst816t.handle
 
 ### 0. 线程数据流（内嵌 SVG 静态图）
 
-```html
+```
 <svg width="820" height="400" xmlns="http://www.w3.org/2000/svg" font-family="Consolas, monospace" font-size="13">
   <defs><marker id="a2" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#888"/></marker></defs>
 
@@ -115,7 +115,7 @@ graph TD
 
 ### 3. 机制二：快照缓存与 sequence 版本号
 
-临界区保护 worker（写）与消费者（读）的撕裂竞争；`sequence` 仅在内容真正变化时递增，消费者对比 `sequence` 判断"新帧"（`bsp_adapter_port_touch.c:701`）。释放时保留最后一次有效位置（`handle.c:94-97`），错误采样仅更新 error。
+临界区保护 worker（写）与消费者（读）的撕裂竞争；`sequence` 仅在内容真正变化时递增，消费者对比 `sequence` 判断 " 新帧 "（`bsp_adapter_port_touch.c:701`）。释放时保留最后一次有效位置（`handle.c:94-97`），错误采样仅更新 error。
 
 ### 4. 机制三：ISR 桥接与 irq_pending 去抖
 
@@ -256,13 +256,17 @@ static bool handle_notify_touch_from_isr(bsp_touch_handle_t *p_self) {
 #### Q1: 快照缓存为什么要进临界区？sequence 的作用？
 
 **用户原答：** 防止线程切换后触摸数据被覆盖；sequence 是触摸位置顺序。
-**修正后理解：** 临界区保护 worker 写 / 消费者读的撕裂竞争；sequence 是采样版本号（内容变化才递增），消费者对比它判新帧，而非"位置顺序"。
+
+**修正后理解：** 临界区保护 worker 写 / 消费者读的撕裂竞争；sequence 是采样版本号（内容变化才递增），消费者对比它判新帧，而非 " 位置顺序 "。
+
 **证据：** handle.c:77-107；bsp_adapter_port_touch.c:701
 
 #### Q2: worker 为什么用 20ms 超时而非永久阻塞？
 
 **用户原答：** 不知道（薄弱点）。
+
 **修正后理解：** 轮询兜底——EXTI 失效/丢事件时超时强制定期主动读，事件驱动与周期轮询融合。
+
 **证据：** handle.c:178-193
 
 ### 🟡 进阶
@@ -270,13 +274,17 @@ static bool handle_notify_touch_from_isr(bsp_touch_handle_t *p_self) {
 #### Q3: irq_pending 的三个忽略条件各是什么？
 
 **用户原答：** irq_pending 是中断运行状态。
+
 **修正后理解：** 去抖防洪泛标志。`irq_pending`=上个事件未处理完；`dma_waiting`=DMA 在读总线被占；`!dma_enabled`=走轮询不靠 EXTI。
+
 **证据：** handle.c:281-298
 
 #### Q4: 为什么协作式停止优于强杀线程？
 
 **用户原答：** 不知道（薄弱点）。
+
 **修正后理解：** 强杀线程在回调持锁时死锁；协作式让 worker 处理完当前事件自然退出，资源安全释放。
+
 **证据：** handle.c:195-204, 320-335；[[MPU6050的handle文件架构设计思路]]
 
 ### 🔴 困难
@@ -284,20 +292,24 @@ static bool handle_notify_touch_from_isr(bsp_touch_handle_t *p_self) {
 #### Q5: 资源创建与回滚为什么必须逆序？
 
 **用户原答：** 先删队列后删线程最后删 driver，避免内存泄露。
-**修正后理解：** 逆序由资源依赖决定（worker 依赖队列、二者依赖 Driver）；线程创建失败时无"线程可删"，实际回滚是"删队列→deinit Driver"。防悬挂引用而非仅内存泄露。
+
+**修正后理解：** 逆序由资源依赖决定（worker 依赖队列、二者依赖 Driver）；线程创建失败时无 " 线程可删 "，实际回滚是 " 删队列→deinit Driver"。防悬挂引用而非仅内存泄露。
+
 **证据：** handle.c:370-438
 
 #### Q6: 为什么装配必须在调度器启动后的任务上下文？
 
 **用户原答：** 调度之前初始化防止访问野指针/空指针。
-**修正后理解：** 非"调度之前"而是"调度之后"。worker 线程依赖调度器运行、Driver init 用 `osal_task_delay_ms`、EXTI/DMA 中断须调度器就绪后使能；防资源未就绪即被抢占。
+
+**修正后理解：** 非 " 调度之前 " 而是 " 调度之后 "。worker 线程依赖调度器运行、Driver init 用 `osal_task_delay_ms`、EXTI/DMA 中断须调度器就绪后使能；防资源未就绪即被抢占。
+
 **证据：** bsp_adapter_port_touch.c:625
 
 ## 📋 总结
 
 > **用户原话：** handle 是对多实例的管理，对线程的同步和异步操作，对 isr 和 dma 的上下文管理。
 >
-> **AI 补充：** Handle 以"ISR 只入队、worker 串行处理"固化为无锁骨架，快照 + sequence 供 LVGL 非阻塞读，20ms 轮询兜底 + 协作式停止保障鲁棒性，依赖注入保持 RTOS 无关。
+> **AI 补充：** Handle 以 "ISR 只入队、worker 串行处理 " 固化为无锁骨架，快照 + sequence 供 LVGL 非阻塞读，20ms 轮询兜底 + 协作式停止保障鲁棒性，依赖注入保持 RTOS 无关。
 
 ## 📎 参考资料
 
