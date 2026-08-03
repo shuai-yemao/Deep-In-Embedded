@@ -28,48 +28,13 @@ react-components-namespace: bsp.cst816t.handle
 
 ### 0. 线程数据流（内嵌 SVG 静态图）
 
-```
-<svg width="820" height="400" xmlns="http://www.w3.org/2000/svg" font-family="Consolas, monospace" font-size="13">
-  <defs><marker id="a2" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#888"/></marker></defs>
-
-  <rect x="40" y="20" width="330" height="60" rx="6" fill="#fdeef0" stroke="#c0504d" stroke-width="2"/>
-  <text x="60" y="45" fill="#c0504d" font-weight="bold">ISR 上下文</text>
-  <text x="60" y="66" fill="#333">EXTI(PB2) / I2C3 RX-DMA 完成/错误</text>
-
-  <rect x="450" y="20" width="330" height="60" rx="6" fill="#fdeef0" stroke="#c0504d" stroke-width="2"/>
-  <text x="470" y="45" fill="#c0504d" font-weight="bold">ISR 桥接（仅入队）</text>
-  <text x="470" y="66" fill="#333">pf_notify_touch_from_isr</text>
-
-  <rect x="40" y="130" width="740" height="70" rx="6" fill="#eef2fb" stroke="#4a6fb5" stroke-width="2"/>
-  <text x="60" y="155" fill="#4a6fb5" font-weight="bold">事件队列（4 类：IRQ / DMA_COMPLETE / DMA_ERROR / STOP）</text>
-  <text x="60" y="180" fill="#333">容量 8 · 由 osal 队列实现 · FromISR 入队</text>
-
-  <rect x="40" y="240" width="740" height="70" rx="6" fill="#f0f8f0" stroke="#4a9b5a" stroke-width="2"/>
-  <text x="60" y="265" fill="#4a9b5a" font-weight="bold">worker 线程（单一消费者 · 20ms 超时轮询兜底）</text>
-  <text x="60" y="288" fill="#333">阻塞取事件 → 按 type 分发：解码/快照更新/恢复 DMA/协作式停止</text>
-
-  <rect x="40" y="340" width="330" height="50" rx="6" fill="#f5f0e8" stroke="#b5894a" stroke-width="2"/>
-  <text x="60" y="365" fill="#b5894a" font-weight="bold">快照缓存</text>
-  <text x="60" y="382" fill="#333">pressed / x / y / sequence / error</text>
-
-  <rect x="450" y="340" width="330" height="50" rx="6" fill="#f0f8f0" stroke="#4a9b5a" stroke-width="2"/>
-  <text x="470" y="365" fill="#4a9b5a" font-weight="bold">LVGL indev（非阻塞读）</text>
-  <text x="470" y="382" fill="#333">pf_get_latest → 对比 sequence 判新</text>
-
-  <line x1="370" y1="50" x2="450" y2="50" stroke="#888" stroke-width="2" marker-end="url(#a2)"/>
-  <line x1="410" y1="80" x2="410" y2="130" stroke="#888" stroke-width="2" marker-end="url(#a2)"/>
-  <line x1="410" y1="200" x2="410" y2="240" stroke="#888" stroke-width="2" marker-end="url(#a2)"/>
-  <line x1="205" y1="310" x2="205" y2="340" stroke="#888" stroke-width="2" marker-end="url(#a2)"/>
-  <line x1="615" y1="310" x2="615" y2="340" stroke="#888" stroke-width="2" marker-end="url(#a2)"/>
-</svg>
-```
+![[CST816T的handle文件架构设计思路/thread-dataflow.svg]]
 
 ### 1. React 交互组件：触摸快照模拟器（动态）
 
 > 演示快照缓存的核心：**只有内容变化才 `sequence++`**。点击按钮模拟按下/移动/松开，观察 `sequence` 是否变化。需 obsidian-react-components 插件（笔记①已配置）。
 
 ```jsx:component:TouchSnapshotSimulator
-const { useState } = React;
 const init = { pressed:false, x:0, y:0, sequence:0 };
 const [s, setS] = useState(init);
 const apply = (next) => {
