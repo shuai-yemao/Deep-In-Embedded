@@ -30,7 +30,7 @@ react-components-namespace: bsp.cst816t
 1. **装配建链**：`Bsp/porting/drv_adapter_port_touch/src/bsp_adapter_port_touch.c:637` 构造 Driver、注册到 Handle、启动 worker，建立 "PB2 EXTI → 事件队列 → worker → 快照缓存 " 整条数据链路。
 2. **LVGL 输入设备**：`Core/Src/lvgl_port.c:45` 经 Wrapper `bsp_touch_adapter_wrapper_get_latest()` 非阻塞读取触摸快照，驱动点击/滑动交互（输入角色；显示输出由 ST7789 承担）。
 
-> 角色区分：CST816T 给 LVGL 的是**输入（indev）**能力——LVGL 从它 " 读 " 触摸；ST7789 是**输出**出**出**qe}输出**端——LVGL 把渲染好的画面 " 写 " 给屏幕。
+> 角色区分：CST816T 给 LVGL 的是**输入（indev）**能力——LVGL 从它 " 读 " 触摸；ST7789 是**输出**出**出**出**qe}输出**端——LVGL 把渲染好的画面 " 写 " 给屏幕。
 
 ## 核心逻辑/原理
 
