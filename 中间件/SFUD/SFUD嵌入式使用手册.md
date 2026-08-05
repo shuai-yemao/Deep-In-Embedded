@@ -17,13 +17,13 @@ aliases:
 > [!summary] 适合谁阅读
 > 这是一份给第一次接触 SFUD 串行 Flash 驱动库的嵌入式开发者的入门手册。你不需要先弄懂 JEDEC ID、SFDP 或各家 Flash 的命令，先照着最小示例把一段数据写进去再读出来即可。
 
-本手册讲"移植完成以后怎么用 SFUD"。如果你还没有把 SFUD 放进工程，请先看：
+本手册讲 " 移植完成以后怎么用 SFUD"。如果你还没有把 SFUD 放进工程，请先看：
 
 [[SFUD嵌入式移植指南]]
 
 ## 1. SFUD 到底是什么
 
-SFUD 是一个"翻译官"。市面上的 SPI Flash 芯片有很多家（Winbond、GigaDevice、ISSI……），每家的命令、页大小、擦除粒度都不一样。SFUD 通过读取芯片的 JEDEC ID，自动查表匹配对应的命令，让你用同一套 API 操作不同芯片。
+SFUD 是一个 " 翻译官 "。市面上的 SPI Flash 芯片有很多家（Winbond、GigaDevice、ISSI……），每家的命令、页大小、擦除粒度都不一样。SFUD 通过读取芯片的 JEDEC ID，自动查表匹配对应的命令，让你用同一套 API 操作不同芯片。
 
 它帮我们回答一个问题：
 
@@ -172,7 +172,7 @@ sfud_err sfud_chip_erase(const sfud_flash *flash);
 sfud_err sfud_erase_write(const sfud_flash *flash, uint32_t addr, size_t size, const uint8_t *data);
 ~~~
 
-一步完成"擦除 + 写入"。适合覆盖整块区域的场景，省去手动先擦。
+一步完成 " 擦除 + 写入 "。适合覆盖整块区域的场景，省去手动先擦。
 
 ### 4.6 读写状态寄存器
 
@@ -261,10 +261,10 @@ void save_log_part(void)
 
 ## 9. 记住这五句话
 
-1. SFUD 帮你"翻译"不同厂家的 SPI Flash，让你用同一套 API。
+1. SFUD 帮你 " 翻译 " 不同厂家的 SPI Flash，让你用同一套 API。
 2. 固定顺序：初始化 → 取设备 → 擦除 → 写入 → 读回。
 3. Flash 只能 1 写 0，**写之前必须先擦除**。
-4. 跨页、粒度对齐这些细节 SFUD 自动处理，但"擦除会多擦尾部"要自己注意。
+4. 跨页、粒度对齐这些细节 SFUD 自动处理，但 " 擦除会多擦尾部 " 要自己注意。
 5. 多任务安全由共享互斥锁保证，业务代码不用手动加锁，但别绕过 SFUD 直连 SPI。
 
 ## 10. 继续学习
@@ -274,4 +274,4 @@ void save_log_part(void)
 - [SFDP 解析（本项目已裁剪，需要自动探测新芯片时可开启 `SFUD_USING_SFDP`）](https://github.com/armink/SFUD/blob/1.1.0/sfud/src/sfud_sfdp.c)
 - [W25Q32 数据手册](https://www.winbond.com/resource-files/W25Q32JV%20RevH%2009232021%20Plus.pdf)
 
-如果某个 API、错误码或读写现象看不懂，把代码和返回的 `sfud_err` 贴出来，按"初始化 → 擦除 → 写入 → 读回"的顺序一起分析。
+如果某个 API、错误码或读写现象看不懂，把代码和返回的 `sfud_err` 贴出来，按 " 初始化 → 擦除 → 写入 → 读回 " 的顺序一起分析。
