@@ -42,27 +42,26 @@ date: 2026-08-05
 > 面包屑机制本质是三个模块的接力：**撒痕迹（运行时）→ 留快照（崩溃时）→ 做报告（启动时）**。存储介质是贯穿三者的关键——必须"复位不清零"。
 
 ```mermaid
-flowchart LR
-    subgraph RUN["正常运行（崩溃前）"]
-        A["主循环 / 任务<br/>执行到关键节点"] -->|"breadcrumb(n, id)"| B["循环写面包屑槽<br/>覆写最旧记录"]
+flowchart TD
+    subgraph RUN["① 运行期：撒面包屑"]
+        A["主循环 / 任务<br/>执行到关键节点"] -->|"breadcrumb()"| B["环形覆写<br/>保留最近 N 步"]
     end
 
-    subgraph FAULT["崩溃瞬间"]
-        C["HardFault / BusFault<br/>硬件自动压栈 8 字"] --> D["Handler 提取<br/>PC/LR/CFSR/栈指针"]
-        D --> E["保存 R4~R11<br/>+ 崩溃时寄存器现场"]
-        E --> F["写入 crash_dump<br/>magic + CRC32"]
+    subgraph FAULT["② 崩溃瞬间：留快照"]
+        C["硬件自动压栈 8 字"] --> D["提取 PC/LR/CFSR"]
+        D --> E["保存 R4~R11 + 面包屑"]
+        E --> F["写入 noinit 区<br/>magic + CRC"]
         F --> G["软件复位"]
     end
 
-    subgraph BOOT["启动报告"]
-        H["上电 / 复位"] --> I["启动早期<br/>读取 noinit 区"]
-        I --> J{"magic 匹配<br/>&& CRC 正确 ?"}
-        J -->|"是"| K["打印崩溃报告<br/>面包屑轨迹 + 现场"]
+    subgraph BOOT["③ 启动后：出报告"]
+        H["读取 noinit 区"] --> J{"magic+CRC<br/>校验通过?"}
+        J -->|"是"| K["打印崩溃报告"]
         K --> L["消费：清 magic"]
-        J -->|"否"| M["记录无效<br/>视为正常启动"]
+        J -->|"否"| M["视为正常启动"]
     end
 
-    B -.->|"同一块保留内存<br/>（面包屑 + dump 相邻）"| F
+    B -.->|"同一块保留内存"| F
     G --> H
 ```
 
