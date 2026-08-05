@@ -164,6 +164,20 @@ FlashDB 要求数据库分区至少能放下 **2 个扇区**（本项目 W25Q64 
 fdb   0x00600000   512KB   FlashDB KV 存储
 ~~~
 
+### 3.5 销毁数据库（可选）
+
+不再使用这个数据库时，可以反初始化，释放其占用的资源：
+
+~~~c
+fdb_err_t fdb_kvdb_deinit(fdb_kvdb_t db);
+~~~
+
+~~~c
+fdb_kvdb_deinit(&s_kvdb);
+~~~
+
+本工程 FlashDB 全程常驻、掉电不销毁，所以不需要调用 deinit。
+
 ## 4. KV 字符串读写
 
 ### 4.1 写入
