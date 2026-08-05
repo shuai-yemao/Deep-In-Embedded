@@ -1,4 +1,4 @@
-# 项目: STM32F411CEU6-BSP-Flash | 问题: J-Link GDB Server异常退出导致芯片被擦空
+# 项目: STM32F411CEU6-BSP-Flash | 问题: J-Link GDB Server 异常退出导致芯片被擦空
 
 > 创建时间: 2026-07-22 18:08
 > MCU: STM32F411CEU6
@@ -37,6 +37,7 @@ loadfile → "Target voltage too low (1 Volt is required, Measured: 0.0 Volt)"
 ```
 
 随后 J-Link 连探针都无法连接：
+
 ```
 WARNING: Out of sync, resynchronizing...
 FAILED: Cannot connect to the probe/programmer.
@@ -45,9 +46,7 @@ FAILED: Cannot connect to the probe/programmer.
 ## 2. 提出可能的假设
 
 1. **根因**：`flash.jlink` 脚本先 `erase`（擦除成功），后 `loadfile` 时目标电压异常降至 0V，导致烧录失败。芯片 Flash 已被全擦但新固件未写入 → CPU 无法启动 → GDB Server 超时退出。
-
 2. **链式后果**：擦空后的芯片可能进入低功耗/异常状态，SWD 接口响应异常，导致 J-Link 通信中断，触发 USB 层 `Out of sync` 错误。
-
 3. **预防措施**：烧录脚本应先 `loadfile` 成功后再 `erase`（或不使用全片擦除，仅按扇区擦除）。
 
 ## 1. 初步 checklist 确认
@@ -82,9 +81,11 @@ FAILED: Cannot connect to the probe/programmer.
 ## 第一次实验
 
 ### 1. 实验时间
+
 2026-07-22
 
 ### 2. 实验环境
+
 - 芯片: STM32F411CEU6
 - 调试器: J-Link V9 (SN: 69701612, FW: 2021-05-07)
 - J-Link 软件: V9.30
@@ -92,6 +93,7 @@ FAILED: Cannot connect to the probe/programmer.
 - 供电: USB 5V → 板载 LDO 3.3V (VTref=3.320V)
 
 ### 3. 实验步骤
+
 1. 拔插 J-Link USB 线等待 5 秒
 2. `JLink.exe` 确认探针重新识别
 3. 移除 `flash.jlink` 中的 `erase` 行
@@ -99,4 +101,5 @@ FAILED: Cannot connect to the probe/programmer.
 5. 观察 RTT 输出确认固件运行
 
 ### 4. 实验结果
+
 待烧录验证。
