@@ -67,15 +67,15 @@ SFUD port drv_adapter_sfud_externflash.c  绑定 wr/lock/unlock，复用 Wrapper
 
 每一层只做一件事：
 
-| 层 | 职责 |
-| -- | ---- |
-| FatFs | 文件系统本体：卷管理、目录树、FAT 表、LFN 文件名 |
-| diskio（本工程移植层） | 把 FatFs 的"逻辑扇区"翻译成 FAL 分区的"字节偏移"，逐扇区擦写 |
-| FAL | Flash 抽象层：把"分区"概念提供给上层，屏蔽具体 Flash |
-| SFUD | 串行 Flash 通用驱动：JEDEC 识别、页编程、扇区擦除 |
-| FreeRTOS | 提供底层 SPI 互斥锁，串行化多任务对 SPI 的访问 |
+| 层              | 职责                                     |
+| -------------- | -------------------------------------- |
+| FatFs          | 文件系统本体：卷管理、目录树、FAT 表、LFN 文件名           |
+| diskio（本工程移植层） | 把 FatFs 的 " 逻辑扇区 " 翻译成 FAL 分区的 " 字节偏移 "，逐扇区擦写 |
+| FAL            | Flash 抽象层：把 " 分区 " 概念提供给上层，屏蔽具体 Flash      |
+| SFUD           | 串行 Flash 通用驱动：JEDEC 识别、页编程、扇区擦除        |
+| FreeRTOS       | 提供底层 SPI 互斥锁，串行化多任务对 SPI 的访问           |
 
-关键设计：**线程安全不在 FatFs 层**。`FF_FS_REENTRANT=0`，FatFs 内部不加锁（因此本工程不需要 ffsystem.c），靠"单卷单任务访问 + SFUD 共享互斥"保证安全（见第 4 节 Step 5）。
+关键设计：**线程安全不在 FatFs 层**。`FF_FS_REENTRANT=0`，FatFs 内部不加锁（因此本工程不需要 ffsystem.c），靠 " 单卷单任务访问 + SFUD 共享互斥 " 保证安全（见第 4 节 Step 5）。
 
 ## 2. 官方源码地址
 
