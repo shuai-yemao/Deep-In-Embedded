@@ -428,8 +428,23 @@ A6：会。`-O2` 下编译器可能内联函数、重排指令、合并公共子
 
 ## 💻 仓库链接
 
+> GitHub 源码仓库。崩溃记录分两类：**可复用库**管"崩溃瞬间"，**产品工程参考**内含完整的"崩溃前面包屑 + 启动报告"实现。
+
+### 可复用库（崩溃瞬间捕获）
+
 - [armink/CmBacktrace](https://github.com/armink/CmBacktrace) — 崩溃现场自动捕获与回溯库，面包屑的"崩溃时/报告"环节可直接复用
-- [esphome/esphome PR #14709: crash handler across reboots](https://github.com/esphome/esphome/pull/14709) — ESP32 跨重启崩溃上报的工程化实现（`.noinit` 84B 结构体 + magic/version + 启动 `ESP_LOGE` 报告）
+- [adamgreen/CrashCatcher](https://github.com/adamgreen/CrashCatcher) — Cortex-M HardFault 捕获，crash dump 保存供 CrashDebug 离线解析（257★）
+- [BenBE/stm32-crashreporter](https://github.com/BenBE/stm32-crashreporter) — STM32 F3/F4 专用，汇编 stub 接管 5 个 fault handler，UART 同步输出寄存器现场（AGPLv3）
+
+### 产品工程参考（面包屑 + 启动报告完整模式）
+
+- [DecentLabs/officeAir](https://github.com/DecentLabs/officeAir) — **模式最全**：`RTC_NOINIT` + magic 校验、每个阶段 `setCheckpoint()`、启动读复位原因 + `checkpointToString()`、NVS 防重启风暴、远程上报
+- [chattock/sp1-tape-looper](https://github.com/chattock/sp1-tape-looper) — **最贴近 Cortex-M 裸机**：`__noinit` RAM + magic key `0xFA17FA17`，启动打印 `flt=reason@pc`
+- [esphome/esphome PR #14709: crash handler across reboots](https://github.com/esphome/esphome/pull/14709) — ESP32 跨重启崩溃上报工程化实现（`.noinit` 84B 结构体 + magic/version + 启动 `ESP_LOGE` 报告）
+- [botts7/esp32-wallbox](https://github.com/botts7/esp32-wallbox) — RTC NOINIT 崩溃轨迹 + `/api/boot/history` 启动历史，能判断"INT_WDT 触发时是哪个调用卡住 CPU"
+- [tensop-au/zephyr-esp32s3-lorawan-fuota](https://github.com/tensop-au/zephyr-esp32s3-lorawan-fuota) — Zephyr 下 `__noinit` 崩溃面包屑 + 启动横幅，把"节点夜半重启"变成"线程 X 死于原因 Y"
+- [OffbandMesh/meshcore-firmware](https://github.com/OffbandMesh/meshcore-firmware) — nRF52 手写 `.noinit` 段 + 启动环形缓冲 + 引导计数（Adafruit core 无现成 noinit 的解法）
+- [Protocentral/healthypi-move-fw](https://github.com/Protocentral/healthypi-move-fw) — Zephyr `__noinit` "P0 safety net" 崩溃面包屑
 
 ## 📄 代码/附件
 
