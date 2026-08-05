@@ -32,7 +32,7 @@ aliases:
 - CMake 构建通过，RTT 实测 KVDB 初始化 + KV/blob 读写通过。
 - 掉电持久化（`FLASHDB_ERASE_PART_ON_BOOT=0`）尚未在实物上断电验证。
 
-"中间件移植成功"不等于"业务 KV 设计已完成"。当前只是跑通了读写闭环。
+" 中间件移植成功 " 不等于 " 业务 KV 设计已完成 "。当前只是跑通了读写闭环。
 
 想了解移植完成后怎么读写 KV 数据，请看 [[FlashDB嵌入式使用手册]]。
 
@@ -72,7 +72,7 @@ Port      drv_adapter_port_externflash.c   软件 SPI 位带实现（PB12-15）
 | 层 | 职责 |
 | -- | ---- |
 | FlashDB | KVDB/TSDB 的键值管理、CRC 校验、GC 回收 |
-| FAL | Flash 抽象层：把"分区"概念提供给上层，屏蔽具体 Flash |
+| FAL | Flash 抽象层：把 " 分区 " 概念提供给上层，屏蔽具体 Flash |
 | SFUD | 串行 Flash 通用驱动：JEDEC 识别、页编程、扇区擦除 |
 | SPI Port | 底层字节收发（本工程为 GPIO 位带软件 SPI） |
 | FreeRTOS | 提供全部互斥原语，串行化多任务对 SPI 的访问 |
@@ -243,7 +243,7 @@ sfud_err sfud_spi_port_init(sfud_flash *flash)
 要点：
 
 - **共享锁设计**：SFUD 的 lock/unlock 桥接到 Port 层的 `s_port_mutex`，与 ExternFlash Handler 等共用一把锁，避免多把独立锁并发争抢 SPI 总线。SFUD 拿锁、Wrapper 直通、FAL 全部串行化在同一把锁上。
-- `sfud_spi_write_read` 一次 CS 拉低内完成"发命令/地址 → 读数据"，读超长（>0xFFFF）时分片。
+- `sfud_spi_write_read` 一次 CS 拉低内完成 " 发命令/地址 → 读数据 "，读超长（>0xFFFF）时分片。
 - 日志 `sfud_log_info` / `sfud_log_debug` 桥接到 `printf`（工程已重定向 SEGGER RTT）。
 - 底层 SPI 是本工程既有的软件 SPI（GPIO 位带，PB12-15），`ADAPTER_PORT_SPI_MODE` 可切硬件 SPI2，但当前用 SW 模式。
 
