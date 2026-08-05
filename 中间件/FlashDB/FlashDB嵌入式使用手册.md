@@ -18,13 +18,13 @@ aliases:
 > [!summary] 适合谁阅读
 > 这是一份给第一次接触 FlashDB 的嵌入式开发者的入门手册。你不需要先学会 FAL、SFUD 或复杂的分区管理，先照着最小示例把一条 KV 数据写进 Flash 再读出来即可。
 
-本手册讲"移植完成以后怎么用 FlashDB"。如果你还没有把 FlashDB 放进工程，请先看：
+本手册讲 " 移植完成以后怎么用 FlashDB"。如果你还没有把 FlashDB 放进工程，请先看：
 
 [[FlashDB嵌入式移植指南]]
 
 ## 1. FlashDB 到底是什么
 
-FlashDB 是一个跑在 Flash 上的"数据库"。它帮我们解决一个问题：
+FlashDB 是一个跑在 Flash 上的 " 数据库 "。它帮我们解决一个问题：
 
 > MCU 掉电以后，我要记住的那些数据怎么不丢？
 
@@ -34,12 +34,12 @@ FlashDB 是一个跑在 Flash 上的"数据库"。它帮我们解决一个问题
 
 | 数据库 | 全称 | 干什么用 | 数据长什么样 |
 | ----- | ---- | ------ | ---------- |
-| KVDB | Key-Value Database | 存"一个键对应一个值" | `"username" -> "firechip"` |
+| KVDB | Key-Value Database | 存 " 一个键对应一个值 " | `"username" -> "firechip"` |
 | TSDB | Time Series Database | 按时间顺序存传感器数据 | 一条带时间戳的日志 |
 
 本工程实际使用 KVDB。TSDB 源码随组件编译，但没有初始化实例（见第 9 节）。
 
-可以把 KVDB 理解成"Flash 上的简易键值表"：
+可以把 KVDB 理解成 "Flash 上的简易键值表 "：
 
 ~~~text
 FlashDB KVDB
@@ -106,7 +106,7 @@ void flashdb_test_entry(void)
 
 | 代码 | 白话解释 |
 | --- | ------- |
-| `fdb_kvdb_control(... SET_LOCK / SET_UNLOCK)` | 告诉 FlashDB "多任务访问时用哪把锁" |
+| `fdb_kvdb_control(... SET_LOCK / SET_UNLOCK)` | 告诉 FlashDB " 多任务访问时用哪把锁 " |
 | `fdb_kvdb_init(&s_kvdb, "fdb_kvdb", "fdb", ...)` | 打开 FAL 的 `fdb` 分区，初始化为 KVDB |
 | `fdb_kv_set / fdb_kv_get` | 写入一条字符串 KV、读回来 |
 | `fdb_kv_set_blob / fdb_kv_get_blob` | 写入一段二进制数据、读回来校验 |
@@ -229,7 +229,7 @@ KV 的值不一定是字符串，也可能是传感器标定数据、校准系�
 fdb_blob_t fdb_blob_make(fdb_blob_t blob, const void *value_buf, size_t buf_len);
 ~~~
 
-它把"一块内存 + 长度"打包成一个 `fdb_blob`，不拷贝数据，只是记录指针和长度：
+它把 " 一块内存 + 长度 " 打包成一个 `fdb_blob`，不拷贝数据，只是记录指针和长度：
 
 ~~~c
 struct fdb_blob blob;
@@ -254,7 +254,7 @@ err = fdb_kv_set_blob(&s_kvdb, "calib", fdb_blob_make(&blob, wbuf, sizeof(wbuf))
 size_t fdb_kv_get_blob(fdb_kvdb_t db, const char *key, fdb_blob_t blob);
 ~~~
 
-返回**实际读到的字节数**。用法是"先按最大长度构造，再拿返回值判断"：
+返回**实际读到的字节数**。用法是 " 先按最大长度构造，再拿返回值判断 "：
 
 ~~~c
 uint8_t rbuf[64];
@@ -324,7 +324,7 @@ fdb_kvdb_control(&s_kvdb, FDB_KVDB_CTRL_SET_LOCK,   (void *)flashdb_lock);
 fdb_kvdb_control(&s_kvdb, FDB_KVDB_CTRL_SET_UNLOCK, (void *)flashdb_unlock);
 ~~~
 
-回调里的 `flashdb_lock` 一般就是"拿一把互斥锁，永久等待"：
+回调里的 `flashdb_lock` 一般就是 " 拿一把互斥锁，永久等待 "：
 
 ~~~c
 static void flashdb_lock(fdb_db_t db)
@@ -340,7 +340,7 @@ static void flashdb_lock(fdb_db_t db)
 
 ## 8. 掉电持久化验证
 
-验证"数据真的掉电不丢"，是本工程的 bring-up 关键步骤：
+验证 " 数据真的掉电不丢 "，是本工程的 bring-up 关键步骤：
 
 1. 把 `user_flashdb.c` 顶部的宏改成 0：
 
@@ -356,7 +356,7 @@ static void flashdb_lock(fdb_db_t db)
 
 ## 9. TSDB 简介（本工程未启用）
 
-TSDB（时序数据库）适合存"带时间戳的传感器数据流"，按时间顺序追加。本工程只编译了它的源码，没有初始化实例。
+TSDB（时序数据库）适合存 " 带时间戳的传感器数据流 "，按时间顺序追加。本工程只编译了它的源码，没有初始化实例。
 
 如果你要用，大致流程是：
 
@@ -386,7 +386,7 @@ fdb_tsl_append(&s_tsdb, fdb_blob_make(&blob, buf, len));
 
 ## 11. 记住这五句话
 
-1. FlashDB 就是帮你把"掉电不能丢的数据"存进 Flash 的键值库。
+1. FlashDB 就是帮你把 " 掉电不能丢的数据 " 存进 Flash 的键值库。
 2. 标准流程：静态声明 KVDB → 注入锁 → `fdb_kvdb_init` → `fdb_kv_set/get`。
 3. 短字符串用 `fdb_kv_get`，二进制和长数据用 `fdb_kv_set_blob`。
 4. 所有真实 Flash 读写都要在任务上下文、调度器启动之后进行。
@@ -399,4 +399,4 @@ fdb_tsl_append(&s_tsdb, fdb_blob_make(&blob, buf, len));
 - [FlashDB KVDB 使用说明（zh_CN）](https://armink.github.io/FlashDB/#/zh-cn/zh-cn-kvdb)
 - [FlashDB TSDB 使用说明（zh_CN）](https://armink.github.io/FlashDB/#/zh-cn/zh-cn-tsdb)
 
-如果某个 API、错误码或 RTT 日志看不懂，可以把具体代码和输出贴出来，按"初始化 → 写入 → 读回 → 校验"的顺序一起分析。
+如果某个 API、错误码或 RTT 日志看不懂，可以把具体代码和输出贴出来，按 " 初始化 → 写入 → 读回 → 校验 " 的顺序一起分析。
