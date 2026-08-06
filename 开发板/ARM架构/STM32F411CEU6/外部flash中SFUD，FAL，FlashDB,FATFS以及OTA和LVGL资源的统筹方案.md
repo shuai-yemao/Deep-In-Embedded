@@ -18,13 +18,13 @@ aliases:
 
 > 在 STM32F411CEU6（内部 512K Flash / 128K RAM）+ W25Q64（外部 8MB SPI Flash）上，SFUD、FAL、FlashDB、FATFS、OTA、LVGL 六大组件如何共享 8MB 外部空间、分配 128KB 内部内存、并在共用一根 SPI 总线时保证并发安全。
 >
-> 核心结论一句话：**以 FAL 分区表为"单一事实来源"，上层组件只认"分区名 + 相对偏移"**。由此换来三个能力——换芯片不改代码（SFUD 内置表 + 动态容量）、改分区只改一处（静态表 + 相对寻址）、并发安全分层守护（SPI 物理锁 + 数据库逻辑锁）。
+> 核心结论一句话：**以 FAL 分区表为 " 单一事实来源 "，上层组件只认 " 分区名 + 相对偏移 "**。由此换来三个能力——换芯片不改代码（SFUD 内置表 + 动态容量）、改分区只改一处（静态表 + 相对寻址）、并发安全分层守护（SPI 物理锁 + 数据库逻辑锁）。
 
 ---
 
 # 📝 分层存储栈的设计思路
 
-> 一句话定义：**W25Q64 ← SPI ← SFUD ← FAL ← {FlashDB KVDB, FatFs}**。每层只认下一层给的接口，靠"函数指针多态 + 编译期静态分区表 + 相对偏移寻址"三层机制解耦。
+> 一句话定义：**W25Q64 ← SPI ← SFUD ← FAL ← {FlashDB KVDB, FatFs}**。每层只认下一层给的接口，靠 " 函数指针多态 + 编译期静态分区表 + 相对偏移寻址 " 三层机制解耦。
 
 ## 每一层的职责（谁负责什么，不负责什么）
 
@@ -103,6 +103,7 @@ sequenceDiagram
 FAL 初始化分两步（[fal.c:22-52](Middlewares/FAL/src/fal.c#L22-L52)）：`fal_flash_init()`（挂载设备）→ `fal_partition_init()`（从静态表构建分区数组，[fal_partition.c:52](Middlewares/FAL/src/fal_partition.c#L52) `partition_table_def[] = FAL_PART_TABLE`）。
 
 上层读写换算：
+
 ```c
 // fal_partition.c:428 读
 ret = flash_dev->ops.read(part->offset + addr, buf, size);
@@ -110,11 +111,12 @@ ret = flash_dev->ops.read(part->offset + addr, buf, size);
 //                   物理地址 = 分区偏移 + 分区内相对地址
 ```
 
-FlashDB 传的是"相对 0~512K"的 `addr`，FAL 加 `part->offset` 变物理地址——**上层永远不知道自己在物理 6MB 还是 7MB**。
+FlashDB 传的是 " 相对 0~512K" 的 `addr`，FAL 加 `part->offset` 变物理地址——**上层永远不知道自己在物理 6MB 还是 7MB**。
 
 ### 机制 4：FlashDB 追加写 + 扇区状态机（掉电安全）
 
 **KV 节点结构**（[fdb_kvdb.c:119-122](Middlewares/FlashDB/src/fdb_kvdb.c#L119-L122)）：
+
 ```
 status_table[]  ← 写入状态渐变（0xFF→...→0x00，掉电可判读到哪一步）
 name_len/len    ← 元数据
@@ -122,6 +124,7 @@ crc32           ← name+value 校验和（[fdb_kvdb.c:122]）
 ```
 
 **扇区状态机**（[fdb_kvdb.c:316](Middlewares/FlashDB/src/fdb_kvdb.c#L316)）：
+
 ```mermaid
 stateDiagram-v2
     [*] --> EMPTY
@@ -130,11 +133,12 @@ stateDiagram-v2
     FULL --> EMPTY: GC 回收后擦除
 ```
 
-**掉电安全原理**：更新 key 是**追加写**——旧节点标记废弃，新节点写新位置。掉电时无论掉在哪个字节，重启重扫靠"状态表判读到哪一步 + CRC 判数据完整性"（[fdb_kvdb.c:364-399](Middlewares/FlashDB/src/fdb_kvdb.c#L364-L399)），半截节点直接作废，不会破坏旧值。
+**掉电安全原理**：更新 key 是**追加写**——旧节点标记废弃，新节点写新位置。掉电时无论掉在哪个字节，重启重扫靠 " 状态表判读到哪一步 + CRC 判数据完整性 "（[fdb_kvdb.c:364-399](Middlewares/FlashDB/src/fdb_kvdb.c#L364-L399)），半截节点直接作废，不会破坏旧值。
 
-### 机制 5：GC 垃圾回收（分区的"磨损均衡器"）
+### 机制 5：GC 垃圾回收（分区的 " 磨损均衡器 "）
 
 触发条件（[fdb_kvdb.c:1076-1086](Middlewares/FlashDB/src/fdb_kvdb.c#L1076-L1086)）：
+
 ```c
 if ((empty_kv = alloc_kv(db, sector, kv_size)) == FAILED_ADDR) {
     gc_collect_by_free_size(db, kv_size);  // 写不下 → GC 腾空间
@@ -179,7 +183,7 @@ flowchart LR
     App --> Run[SCB->VTOR 重定位 + 跳转]
 ```
 
-**中间缓冲区的价值**：下载中断电/校验失败/安装失败都不会破坏当前运行固件——download 区是"回滚保险 + 本地重试源"（无需二次下载）。当前内部 512K Flash 全被 app 占用（[STM32F411XX_FLASH.ld:59](STM32F411XX_FLASH.ld#L59)），实现 OTA 需预留 bootloader 区并后移 app 起点。
+**中间缓冲区的价值**：下载中断电/校验失败/安装失败都不会破坏当前运行固件——download 区是 " 回滚保险 + 本地重试源 "（无需二次下载）。当前内部 512K Flash 全被 app 占用（[STM32F411XX_FLASH.ld:59](STM32F411XX_FLASH.ld#L59)），实现 OTA 需预留 bootloader 区并后移 app 起点。
 
 ### 机制 8：LVGL 的两处资源矛盾
 
@@ -235,6 +239,7 @@ map 实测：`FalPartTable` 0x1c0 / `s_kvdb` 0x36c / `s_fs` 0x1034 / `s_work` 0x
 ### 第一步：初始化顺序
 
 `user_init()`（[user_init.c:38-89](User_Task/User_Init/Src/user_init.c#L38-L89)）：
+
 1. `drv_adapter_port_externflash_register()` — 注册 port
 2. `drv_adapter_wrapper_externflash_init()` — wrapper 初始化（SPI + 互斥锁）
 3. `user_externflash_init()` — 测试线程
@@ -257,27 +262,31 @@ SFUD 层 SPI 锁 take 依赖调度器已启动（[drv_adapter_sfud_externflash.c
 
 1. lvgl_res 3M→2M（腾 1M，LVGL 未接入）+ rsvd 让 1.4M。
 2. 新建 record 分区 2.4M，插到 lvgl 后，fatfs/fdb 顺移。
-3. 写入用 **TSDB**（`fdb_tsl_append`，天然环形+时序+掉电安全），TSDB 源码已编译（[fdb_cfg.h:32](Middlewares/FlashDB/port/fdb_cfg.h#L32) `FDB_USING_TSDB`），仅未初始化。
+3. 写入用 **TSDB**（`fdb_tsl_append`，天然环形 + 时序 + 掉电安全），TSDB 源码已编译（[fdb_cfg.h:32](Middlewares/FlashDB/port/fdb_cfg.h#L32) `FDB_USING_TSDB`），仅未初始化。
 
 ## 常见问题
 
 ### 问题 1：FlashDB 分区太小 → GC 频繁
+
 - **现象**：KV 高频更新时写入慢、偶尔 `KV full`。
-- **根因**：分区小 → 空闲扇区跌破阈值 → 写不下触发 GC 迁移+擦除（[fdb_kvdb.c:1076](Middlewares/FlashDB/src/fdb_kvdb.c#L1076)）。
+- **根因**：分区小 → 空闲扇区跌破阈值 → 写不下触发 GC 迁移 + 擦除（[fdb_kvdb.c:1076](Middlewares/FlashDB/src/fdb_kvdb.c#L1076)）。
 - **修复**：扩大 fdb 分区提供 GC 缓冲。
 - **验证**：观测 GC 触发频率下降。
 
 ### 问题 2：误删 SFUD SPI 锁
+
 - **现象**：FATFS/FlashDB 数据偶发损坏。
 - **根因**：SPI 事务被其他线程腰斩（总线交错）；数据库锁只防逻辑状态、不防物理事务。
 - **修复**：恢复 SPI 锁；两层锁缺一不可。
 
 ### 问题 3：分区表重叠
+
 - **现象**：FAL 初始化通过，但写一个分区破坏另一个分区数据。
 - **根因**：改分区只改 len、没联动邻接分区 offset，两分区重叠。
-- **修复**：规划者自查"首尾相接"；FAL 只查越界不查重叠。
+- **修复**：规划者自查 " 首尾相接 "；FAL 只查越界不查重叠。
 
 ### 问题 4：FatFs 写失败误判
+
 - **现象**：`f_write` 返回错误，应用以为是文件系统坏了。
 - **根因**：FAL 返回 -1 → diskio 翻译 `RES_ERROR`（[diskio.c:140-143](Middlewares/FATFS/port/diskio.c#L140-L143)）→ ff.c 提升 `FR_DISK_ERR`。**RES_ERROR 是物理层问题，RES_PARERR 才是 FatFs 请求越界**。
 - **修复**：看错误码区分物理层 vs 逻辑层。
@@ -289,46 +298,54 @@ SFUD 层 SPI 锁 take 依赖调度器已启动（[drv_adapter_sfud_externflash.c
 ## 🟢 基础
 
 ### Q1：换 W25Q128 并扩 fdb 分区，要改什么？
+
 A1：只改 `fal_cfg.h` 分区表——fdb 的 len（512K→1M）+ 邻接分区（rsvd）offset/len 联动让位，保证不越界不重叠。SFUD/port/FlashDB/FATFS 源码零改动（SFUD 内置表已有 W25Q128BV [sfud_flash_def.h:134](Middlewares/SFUD/inc/sfud_flash_def.h#L134)，FAL 容量运行时动态取 [fal_flash_sfud_port.c:129](Middlewares/FAL/port/fal_flash_sfud_port.c#L129)）。
 
 ### Q2：分区表初始化校验查什么？
+
 A2：每个分区 `offset < flash_dev->len`（[fal_partition.c:145](Middlewares/FAL/src/fal_partition.c#L145)）——查分区**是否超出设备容量**。重叠不查，规划者自查。
 
 ## 🟡 进阶
 
 ### Q3：删掉 SPI 锁会怎样？
+
 A3：SPI 字节流交错 → FATFS 读回错误数据（文件损坏）、FlashDB 写入字节错误（CRC 不过，KV 损坏）。FlashDB 数据库锁只保护 cur_sector/cur_kv/缓存等逻辑状态，不碰 SPI 总线；两层锁各自管一层，缺一不可。
 
 ### Q4：FlashDB 分区为什么至少 2 个扇区？
-A4：扇区状态机要求——USING 扇区写满后，GC 需要一个空闲扇区做迁移目标。2 扇区（8KB）是"无缓冲乒乓"：每次写满立即全扇区迁移+擦除，磨损几十倍且无冗余应对 GC 中途掉电。512K（128 扇区）提供大量空间缓冲。
+
+A4：扇区状态机要求——USING 扇区写满后，GC 需要一个空闲扇区做迁移目标。2 扇区（8KB）是 " 无缓冲乒乓 "：每次写满立即全扇区迁移 + 擦除，磨损几十倍且无冗余应对 GC 中途掉电。512K（128 扇区）提供大量空间缓冲。
 
 ## 🔴 困难
 
 ### Q5：加 2.4MB 环形录音分区，怎么统筹？
-A5：压缩未接入的 LVGL（lvgl_res 3M→2M 腾 1M）+ 动用预留区（rsvd 让 1.4M），新建 record 2.4M 插到 lvgl 后，fatfs/fdb 顺移。写入用 **TSDB**（`fdb_tsl_append`，天然环形+时序+掉电安全），而非 KVDB。
+
+A5：压缩未接入的 LVGL（lvgl_res 3M→2M 腾 1M）+ 动用预留区（rsvd 让 1.4M），新建 record 2.4M 插到 lvgl 后，fatfs/fdb 顺移。写入用 **TSDB**（`fdb_tsl_append`，天然环形 + 时序 + 掉电安全），而非 KVDB。
 
 ### Q6：FlashDB 小分区的高频更新，真正代价是什么？
-A6：不是"数据被覆盖"（FlashDB 永不原地覆盖），而是**写入时 alloc 失败 → 触发 GC → 阻塞重试**（[fdb_kvdb.c:1076-1086](Middlewares/FlashDB/src/fdb_kvdb.c#L1076-L1086)）。高频更新下大部分时间耗在等 GC，且每次 GC 搬动全部有效数据，Flash 磨损加剧。
+
+A6：不是 " 数据被覆盖 "（FlashDB 永不原地覆盖），而是**写入时 alloc 失败 → 触发 GC → 阻塞重试**（[fdb_kvdb.c:1076-1086](Middlewares/FlashDB/src/fdb_kvdb.c#L1076-L1086)）。高频更新下大部分时间耗在等 GC，且每次 GC 搬动全部有效数据，Flash 磨损加剧。
 
 ---
 
 # 📋 总结
 
-> 外部 8MB 按"OTA 双区（1M）+ LVGL 资源（3M）+ FATFS（1M）+ KVDB（512K）+ 日志（1M）+ 预留（1.5M）"划分，**分区表是唯一事实来源**，上层只用相对偏移寻址；内部 128KB 的大头是堆/栈/s_work，均可裁剪；并发靠"SPI 物理锁 + 数据库逻辑锁"两层；换芯片、改 SPI、扩分区都只动配置。
+> 外部 8MB 按 "OTA 双区（1M）+ LVGL 资源（3M）+ FATFS（1M）+ KVDB（512K）+ 日志（1M）+ 预留（1.5M）" 划分，**分区表是唯一事实来源**，上层只用相对偏移寻址；内部 128KB 的大头是堆/栈/s_work，均可裁剪；并发靠 "SPI 物理锁 + 数据库逻辑锁 " 两层；换芯片、改 SPI、扩分区都只动配置。
 >
-> 验证顺序：FAL 必须先于 FlashDB/FATFS；真实 Flash 操作必须在任务线程内；分区规划要自查"不越界 + 不重叠"。
+> 验证顺序：FAL 必须先于 FlashDB/FATFS；真实 Flash 操作必须在任务线程内；分区规划要自查 " 不越界 + 不重叠 "。
 
 ---
 
 # 📎 参考资料
 
 ## 🔗 博客/文档链接
+
 - [SFUD 文档](https://github.com/armink/SFUD) — 串行 Flash 通用驱动库（JEDEC 识别、统一命令）
 - [FAL 文档](https://github.com/armink/FAL) — Flash 抽象层（分区表 + 相对偏移）
 - [FlashDB 文档](https://github.com/armink/FlashDB) — KVDB/TSDB 嵌入式数据库（追加写 + GC）
 - [FatFs 官方](http://elm-chan.org/fsw/ff/00index_e.html) — 通用 FAT 文件系统模块（含 diskio 接口说明）
 
 ## 💻 仓库链接
+
 - [armink/SFUD](https://github.com/armink/SFUD)
 - [armink/FAL](https://github.com/armink/FAL)
 - [armink/FlashDB](https://github.com/armink/FlashDB)
