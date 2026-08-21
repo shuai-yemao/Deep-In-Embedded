@@ -103,7 +103,7 @@ APP 是基于消息、状态机和回调的高层逻辑。
 * MCU Platform：封装芯片时钟、Flash 映射、低功耗入口/退出流程、Bootloader 跳转、Watchdog、异常捕获（cmbacktrace）等。
 * OS Platform：FreeRTOS 抽象（OSAL），统一任务创建、队列、互斥锁、事件组、Notify 等 IPC。让上层逻辑不直接依赖 FreeRTOS 原 API，利于后续移植或替换 RTOS。
 * BSP Platform：所有外设驱动、传感器驱动、显示/触摸/喇叭等 I/O 控制封装成“可复用、可热插拔”的组件。BSP 进一步分为 Driver 层和 Handler 层（见下）。
-* Middleware Platform：图形库 (LVGL)、算法（计步/抬腕检测等）、安全模块（AES、哈希）、协议栈（Ymodem OTA、BLE 透传适配）、存储服务（配置管理、日志、分区表管理）等。
+* Middleware Platform：图形库 (LVGL)、算法（计步/抬腕检测等 ）、安全模块（AES、哈希）、协议栈（Ymodem OTA、BLE 透传适配）、存储服务（配置管理、日志、分区表管理）等。
 
 这些支撑面由单元测试和集成测试保证质量，APP 只是使用它们，不感知内部细节。
 
